@@ -1,6 +1,8 @@
 """UI logic that has nothing to do with Streamlit (so it can be tested): grid <-> rows, proposed snapshots, plain-English diffs."""
 import copy
 import math
+import subprocess
+import sys
 
 import pandas as pd
 
@@ -133,3 +135,44 @@ def diff_snapshots(old, new):
         if a != b:
             lines.append(f"Role settings: minimum footprint for {bt}: {a if a is not None else 'default'} -> {b if b is not None else 'default'}")
     return lines
+
+
+# ------------------------------------------------------------------ running the pipeline from the UI
+NOISE = ("gdalplugins", "The specified procedure could not be found")     # harmless system-GDAL probing on some PCs
+SANITY_TOLERANCE = 0.10
+
+
+def cli_command(*args):
+    """The command line for `python -m critical_buildings <args>`, using the interpreter running the UI."""
+    return [sys.executable, "-m", "critical_buildings", *[str(a) for a in args]]
+
+
+def clean_output(text):
+    """Command output without the harmless GDAL plugin noise lines."""
+    keep = [ln for ln in text.splitlines() if not any(n in ln for n in NOISE)]
+    return "\n".join(ln for i, ln in enumerate(keep) if ln.strip() or (i and keep[i - 1].strip()))
+
+
+def run_cli(*args, cwd=None):
+    """Run a pipeline command to completion. Returns (ok, output text)."""
+    from critical_buildings import paths
+    done = subprocess.run(cli_command(*args), cwd=cwd or paths.ROOT, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace")
+    return done.returncode == 0, clean_output(done.stdout + ("\n" + done.stderr if done.stderr else "")).strip()
+
+
+def sanity_problems(runs_df, tolerance=SANITY_TOLERANCE):
+    """Plain-English warnings about the latest successful run: empty output, or a big swing against the run before."""
+    ok = runs_df[runs_df["status"] == "succeeded"].sort_values("started_at", ascending=False)
+    if ok.empty:
+        return []
+    latest = ok.iloc[0]
+    problems = []
+    if not latest["buildings"] or not latest["sites"]:
+        problems.append(f"Run {latest['run_id']} has no buildings or no sites.")
+    if len(ok) > 1 and ok.iloc[1]["buildings"]:
+        before = ok.iloc[1]["buildings"]
+        if abs(latest["buildings"] - before) > tolerance * before:
+            problems.append(f"Building count moved from {before} to {latest['buildings']} (more than {tolerance:.0%}) "
+                            f"against the previous run. Review before releasing.")
+    return problems

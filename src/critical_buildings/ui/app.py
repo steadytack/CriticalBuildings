@@ -1,13 +1,13 @@
 """Rules editor UI.   python -m critical_buildings ui
 
 Edit the business rules (what counts as a fire station, importance, priorities), the role settings and the register
-mapping. Edits go to a DRAFT; Publish freezes the draft into a numbered version that the next pipeline run uses.
+mapping, and fetch, build and release from the Run tab. Edits go to a DRAFT; Publish freezes the draft into a numbered version that the next pipeline run uses.
 Every change needs your name and a reason and is kept in the audit trail.
 """
 import pandas as pd
 import streamlit as st
 
-from critical_buildings import paths, runs
+from critical_buildings import config, paths, pipeline, runs
 from critical_buildings.control import dumps
 from critical_buildings.control import ruleset as rs
 from critical_buildings.control.store import ControlError, ControlStore, current_user
@@ -364,13 +364,73 @@ def tab_history(s):
     st.dataframe(log[["ts", "user", "table_name", "key", "action", "reason"]], hide_index=True, width="stretch")
 
 
+# ------------------------------------------------------------------------------------------------ run tab
+def tab_run(s):
+    st.subheader("Fetch, build and release")
+    area = st.selectbox("Area", config.areas(), index=config.areas().index(paths.DEFAULT_AREA), key="run_area")
+    try:
+        vid, snap = s.get_version()
+        st.write(f"Runs will use rule set **{rs.version_label(vid, snap)}**"
+                 + (" (the draft has changes that are not published)." if s.has_unpublished_changes() else "."))
+    except ControlError:
+        st.warning("Nothing published yet.")
+    problems = pipeline.check(area, store=s)
+    if problems:
+        st.error("Cannot build yet:\n\n" + "\n".join(f"- {p}" for p in problems))
+    else:
+        st.success("Checks passed: rules, settings and source data are ready.")
+
+    def action(label, *args, **kw):
+        with st.spinner(f"{label} ... (this can take a few minutes)"):
+            ok, out = logic.run_cli(*args)
+        (st.success if ok else st.error)(f"{label}: {'done' if ok else 'failed'}")
+        with st.expander("Output", expanded=not ok):
+            st.code(out or "(no output)")
+        bump()
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown("**1. Fetch sources**")
+        st.caption("Downloads the source data. A new snapshot is stored only if the data changed.")
+        if st.button("Fetch"):
+            action("Fetch", "fetch", "--area", area)
+    with c2:
+        st.markdown("**2. Build**")
+        run_type = st.radio("Run type", ["dev", "candidate"], horizontal=True, help="dev = scratch; candidate = may be released")
+        notes = st.text_input("Notes (optional)", key=key("run_notes"))
+        if st.button("Build", type="primary", disabled=bool(problems)):
+            action("Build", "run", "--area", area, "--type", run_type, "--notes", notes)
+    with c3:
+        st.markdown("**3. Release**")
+        st.caption("A permanent, checksum-verified copy of the current run to share.")
+        name = st.text_input("Release name", value=runs.next_release_name(s), key=key("release_name"))
+        rnotes = st.text_input("Release notes", key=key("release_notes"))
+        if st.button("Release", disabled=not runs.current_run_id(area)):
+            action("Release", "release", name.strip(), "--area", area, "--notes", rnotes)
+
+    st.divider()
+    st.subheader("Runs and releases")
+    df = s.runs_df(area)
+    for w in logic.sanity_problems(df):
+        st.warning(w)
+    if len(df):
+        cols = ["run_id", "run_type", "status", "started_at", "rule_version_label", "buildings", "sites", "notes"]
+        st.dataframe(df[cols], hide_index=True, use_container_width=True)
+    else:
+        st.info("No runs yet.")
+    rel = s.releases_df()
+    if len(rel):
+        st.markdown("**Releases**")
+        st.dataframe(rel[["release", "area", "run_id", "released_at", "released_by"]], hide_index=True, use_container_width=True)
+
+
 def tab_help():
     st.subheader("How this works")
     st.markdown("""
 1. **Edit** rules, role settings or the register mapping. Edits go to a **draft**; nothing changes for runs yet.
 2. **Save** needs your name (sidebar) and a reason. Every change is recorded in the audit trail.
 3. **Publish** (sidebar) freezes the draft as a numbered, immutable **version**. Runs always use a published version, so any past run can be reproduced.
-4. **Run** the pipeline: `python -m critical_buildings run`. The output records which rule version made it.
+4. **Run** the pipeline from the **Run** tab (or `python -m critical_buildings run`). The output records which rule version made it.
 
 **Reviewing a change in git:** every save and publish rewrites plain-text copies in `governed/dumps/`, so a rule change shows up as a normal diff.
 
@@ -386,7 +446,7 @@ def main():
     s = store()
     sidebar(s)
     st.title("Critical Buildings - rules")
-    tabs = st.tabs(["Rules", "Role settings", "Register mapping", "Review & decisions", "Versions & history", "Help"])
+    tabs = st.tabs(["Rules", "Role settings", "Register mapping", "Review & decisions", "Versions & history", "Run", "Help"])
     with tabs[0]:
         tab_rules(s)
     with tabs[1]:
@@ -398,6 +458,8 @@ def main():
     with tabs[4]:
         tab_history(s)
     with tabs[5]:
+        tab_run(s)
+    with tabs[6]:
         tab_help()
 
 

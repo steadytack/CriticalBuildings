@@ -26,6 +26,10 @@ def load_area(name=paths.DEFAULT_AREA):
     return {"area": name, **areas[name]}
 
 
+def areas():
+    return sorted(_raw()["areas"])
+
+
 def load_sources():
     return _raw()["sources"]
 

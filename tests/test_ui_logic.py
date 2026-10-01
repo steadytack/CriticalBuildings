@@ -76,3 +76,32 @@ def test_diff_describes_rule_tag_mapping_and_role_changes():
     assert "minimum primary footprint 150 -> 200 m2" in text
     assert "removed 'shed' from the ancillary OSM building values" in text
     assert "minimum footprint for Fire Station: default -> 60.0" in text
+
+
+# ------------------------------------------------------------------ Run tab helpers
+def _runs(*rows):
+    import pandas as pd
+    return pd.DataFrame(rows, columns=["run_id", "status", "started_at", "buildings", "sites"])
+
+
+def test_cli_command_uses_the_current_interpreter():
+    import sys
+    assert logic.cli_command("run", "--area", "suffolk") == [sys.executable, "-m", "critical_buildings", "run", "--area", "suffolk"]
+
+
+def test_gdal_plugin_noise_is_removed_from_output():
+    raw = ("ERROR 1: Can't load requested DLL: C:\\gdalplugins\\gdal_PDF.dll\n"
+           "127: The specified procedure could not be found.\n\n"
+           "run R1: 3 buildings")
+    assert logic.clean_output(raw) == "run R1: 3 buildings"
+
+
+def test_sanity_gate_flags_empty_and_large_swings_only():
+    assert logic.sanity_problems(_runs()) == []
+    assert logic.sanity_problems(_runs(("R1", "succeeded", "2026-01-01", 100, 10))) == []
+    assert logic.sanity_problems(_runs(("R1", "succeeded", "2026-01-01", 100, 10), ("R2", "succeeded", "2026-01-02", 105, 10))) == []
+    big = logic.sanity_problems(_runs(("R1", "succeeded", "2026-01-01", 100, 10), ("R2", "succeeded", "2026-01-02", 150, 10)))
+    assert len(big) == 1 and "100 to 150" in big[0]
+    assert logic.sanity_problems(_runs(("R1", "succeeded", "2026-01-01", 0, 0)))
+    # failed runs are ignored
+    assert logic.sanity_problems(_runs(("R1", "succeeded", "2026-01-01", 100, 10), ("R2", "failed", "2026-01-02", 0, 0))) == []
