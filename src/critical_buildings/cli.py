@@ -69,6 +69,23 @@ def cmd_runs(args):
     return 0
 
 
+def cmd_ui(args):
+    import subprocess
+    from pathlib import Path
+    app = Path(__file__).parent / "ui" / "app.py"
+    try:
+        import streamlit  # noqa: F401
+    except ImportError:
+        print("The rules UI needs Streamlit:  pip install -e .[ui]")
+        return 1
+    cmd = [sys.executable, "-m", "streamlit", "run", str(app), "--server.port", str(args.port),
+           "--browser.gatherUsageStats", "false"]
+    if args.headless:
+        cmd += ["--server.headless", "true"]
+    print(f"Starting the rules editor on http://localhost:{args.port}  (Ctrl+C to stop)")
+    return subprocess.call(cmd)
+
+
 def cmd_archive(args):
     from critical_buildings import retention
     from critical_buildings.control.store import ControlStore
@@ -161,6 +178,9 @@ def main(argv=None):
     r.add_argument("--notes")
     r.add_argument("--no-reuse", action="store_true", help="rebuild silver even if a matching build is cached")
     add("runs", cmd_runs, "list runs and releases")
+    u = add("ui", cmd_ui, "open the rules editor in your browser")
+    u.add_argument("--port", type=int, default=8501)
+    u.add_argument("--headless", action="store_true", help="do not open a browser window")
     ar = add("archive", cmd_archive, "archive/prune old data per the retention policy (dry run unless --apply)")
     ar.add_argument("--apply", action="store_true")
     rl = add("release", cmd_release, "publish a run as an immutable release")
