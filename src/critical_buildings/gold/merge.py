@@ -1,8 +1,9 @@
 """Merge classified OSM and OS features into one record per building.
 
-Match rule (config below): an OS building polygon and an OSM feature are the same building when they have the
-same Primary Category (and, outside Education, the same Building Type) and either overlap (OSM polygon covers >= _c().overlap_fraction of the OS polygon or contains its
-centre, or the OSM point lies inside it) or are within _c().point_distance_m of each other (lower confidence).
+Match rule (thresholds in config/pipeline.yml, merge section): an OS building polygon and an OSM feature are the
+same building when they have the same Primary Category (and, outside Education, the same Building Type) and either
+overlap (the OSM polygon covers >= overlap_fraction of the OS polygon or contains its centre, or the OSM point lies
+inside it) or are within point_distance_m of each other (lower confidence; the types must then also agree).
 An OSM point is matched to only its single nearest OS polygon; an OSM polygon (e.g. a school site) can match
 several OS building polygons.
 """
@@ -13,6 +14,8 @@ from critical_buildings import config
 from critical_buildings.matching.names import name_similarity
 
 IMP_RANK = {"High": 0, "Medium": 1, "Low": 2}
+MERGED_COLUMNS = ["source", "source_feature_id", "name", "os_ref", "osm_ref", "method", "confidence", "review", "osm_building",
+                  "geometry", "refs", "category", "building_type", "importance", "driver", "rule_ref", "rule_notes"]
 
 
 def _c():
@@ -115,6 +118,8 @@ def merge(osm, os_, prio):
                          confidence="Medium", review="",
                          osm_building=o.osm_building,
                          geometry=o.geometry, refs=o.matched_refs))
+    if not recs:                      # nothing classified in this area: return an empty table with the usual columns
+        return gpd.GeoDataFrame({c: [] for c in MERGED_COLUMNS}, geometry="geometry", crs=27700)
     out = pd.DataFrame(recs)
     b = out.pop("base")
     out["category"] = [x.category for x in b]

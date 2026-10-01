@@ -35,4 +35,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -p no:faulthandler"
+markers = ["slow: end-to-end regression on the real bronze data (about a minute); deselect with -m \"not slow\""]

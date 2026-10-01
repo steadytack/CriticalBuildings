@@ -6,6 +6,8 @@ from critical_buildings import config
 
 
 def _tokens(name):
+    if name is None or (isinstance(name, float) and name != name):      # None / NaN: no name, no tokens
+        return []
     s = re.sub(r"[^a-z0-9 ]", " ", str(name).lower().replace("&", " and ").replace("st.", "saint").replace("st ", "saint "))
     toks = [t for t in s.split() if t]
     keep = [t for t in toks if t not in config.get().reference_match.stop_words]
