@@ -33,7 +33,7 @@ AREA_TAGS = {("landuse", "port"), ("landuse", "military"), ("aeroway", "aerodrom
 
 @dataclass
 class Tag:
-    """One active way of recognising a building type (one row of the old Rules sheet)."""
+    """One active way of recognising a building type (one tag of one rule)."""
     rule_ref: int
     priority: int
     category: str

@@ -143,6 +143,9 @@ class ControlStore:
             row = (c.execute("SELECT version_id, snapshot_json FROM rule_set_version WHERE version_id = ?", (version_id,)).fetchone()
                    if version_id else
                    c.execute("SELECT version_id, snapshot_json FROM rule_set_version ORDER BY version_id DESC LIMIT 1").fetchone())
+        if row is None and version_id:
+            have = ", ".join(str(v) for v in sorted(self.versions_df().version_id)) or "none"
+            raise ControlError(f"Rule set version {version_id} does not exist. Published versions: {have}.")
         if row is None:
             raise ControlError("No published rule set yet. Publish one from the UI, or run: python -m critical_buildings control init")
         return row["version_id"], json.loads(row["snapshot_json"])

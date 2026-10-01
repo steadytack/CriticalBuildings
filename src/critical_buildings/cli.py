@@ -4,6 +4,9 @@
     fetch [--only osm,dfe ...]   download source data into new immutable bronze snapshots
     run                          build the dataset (silver -> gold -> publish)
     control init|dump|versions|import-overrides|publish    manage the rules store
+    export-excel                 a read-only Excel view of the published rules
+    runs | release | archive | restore    run history, immutable releases, retention
+    ui                           the rules editor in your browser
 """
 import argparse
 import logging
@@ -19,7 +22,7 @@ def _setup_logging(verbose=False):
 
 def cmd_check(args):
     from critical_buildings import pipeline
-    problems = pipeline.check(args.area)
+    problems = pipeline.check(args.area, rules_version=getattr(args, "rules_version", None))
     if problems:
         print("Check FAILED:")
         for p in problems:
@@ -42,13 +45,13 @@ def cmd_fetch(args):
 
 def cmd_run(args):
     from critical_buildings import pipeline
-    problems = pipeline.check(args.area)
+    problems = pipeline.check(args.area, rules_version=args.rules_version)
     if problems:
         print("Cannot run - fix these first:")
         for p in problems:
             print("  -", p)
         return 1
-    result = pipeline.run(args.area, args.type, args.notes or "", not args.no_reuse)
+    result = pipeline.run(args.area, args.type, args.notes or "", not args.no_reuse, rules_version=args.rules_version)
     reused = " (silver reused)" if result["silver_reused"] else ""
     print(f"run {result['run_id']}: {result['buildings']} buildings in {result['sites']} sites{reused}")
     print(f"  -> {result['dest']}")
@@ -66,6 +69,18 @@ def cmd_runs(args):
         print()
         print("Releases:")
         print(rel[["release", "area", "run_id", "released_at", "released_by"]].to_string(index=False))
+    return 0
+
+
+def cmd_export_excel(args):
+    from critical_buildings.control import excel_view
+    from critical_buildings.control.store import ControlError, ControlStore
+    try:
+        out = excel_view.export(ControlStore(), args.out, args.version)
+    except ControlError as e:
+        print(e)
+        return 1
+    print("wrote (read-only view):", out)
     return 0
 
 
@@ -103,6 +118,18 @@ def cmd_archive(args):
         print("done.")
     else:
         print("Nothing changed. Re-run with --apply to carry this out.")
+    return 0
+
+
+def cmd_restore(args):
+    from critical_buildings import retention
+    from critical_buildings.control.store import ControlStore
+    try:
+        dest = retention.restore(ControlStore(), args.layer, args.name, area=args.area)
+    except (FileNotFoundError, FileExistsError, ValueError) as e:
+        print(e)
+        return 1
+    print("restored ->", dest)
     return 0
 
 
@@ -169,7 +196,8 @@ def main(argv=None):
         sp.set_defaults(fn=fn)
         return sp
 
-    add("check", cmd_check, "validate rules, settings and data")
+    c_ = add("check", cmd_check, "validate rules, settings and data")
+    c_.add_argument("--rules-version", type=int, help="check this published rule set number instead of the latest")
     f = add("fetch", cmd_fetch, "download source data into new bronze snapshots")
     f.add_argument("--only", help="comma-separated: osm,os,codepoint,dfe,cqc,nhs")
     f.add_argument("--dry-run", action="store_true", help="show what would be downloaded")
@@ -177,12 +205,19 @@ def main(argv=None):
     r.add_argument("--type", choices=["dev", "candidate"], default="dev")
     r.add_argument("--notes")
     r.add_argument("--no-reuse", action="store_true", help="rebuild silver even if a matching build is cached")
+    r.add_argument("--rules-version", type=int, help="use this published rule set number instead of the latest")
     add("runs", cmd_runs, "list runs and releases")
+    x = add("export-excel", cmd_export_excel, "write a read-only Excel view of the published rules")
+    x.add_argument("--version", type=int, help="rule set version number (default: latest)")
+    x.add_argument("--out", help="output .xlsx path")
     u = add("ui", cmd_ui, "open the rules editor in your browser")
     u.add_argument("--port", type=int, default=8501)
     u.add_argument("--headless", action="store_true", help="do not open a browser window")
     ar = add("archive", cmd_archive, "archive/prune old data per the retention policy (dry run unless --apply)")
     ar.add_argument("--apply", action="store_true")
+    rs_ = add("restore", cmd_restore, "bring an archived gold run or bronze snapshot back")
+    rs_.add_argument("layer", choices=["gold", "bronze"])
+    rs_.add_argument("name", help="gold: the run id.  bronze: <source folder>/<snapshot>, e.g. dfe_gias/2026-06-01")
     rl = add("release", cmd_release, "publish a run as an immutable release")
     rl.add_argument("name", nargs="?", help="e.g. v2026.10.0 (default: next in the month)")
     rl.add_argument("--run", help="run id (default: the latest successful run)")

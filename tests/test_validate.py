@@ -116,7 +116,7 @@ def test_reference_mapping_checks():
     s["reference_mapping"][0]["building_type"] = "Prymary School"
     s["reference_mapping"][1]["source"] = "Ofsted"
     errors = validate.check_reference_mapping(s)
-    assert any("'Prymary School' is not a Building Type" in e for e in errors)
+    assert any("'Prymary School' is not the Building Type of any rule" in e for e in errors)
     assert any("must be DfE, CQC or NHS ODS" in e for e in errors)
 
 

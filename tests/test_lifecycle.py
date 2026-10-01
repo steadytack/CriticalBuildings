@@ -186,3 +186,18 @@ def test_applying_a_dev_deletion_removes_the_folder_without_an_archive(isolated_
     retention.apply(store, planned(store, gold_keep=1))
     assert not runs.run_dir("suffolk", "R1").exists() and not (paths.ARCHIVE / "gold").exists()
     assert store.get_run("R1")["status"] == "archived" and store.get_run("R1")["archive_path"] == ""
+
+
+def test_a_run_can_pin_an_older_published_rule_set(seeded_store):
+    """store.ruleset(n) returns exactly version n, so an old run can be reproduced with its rules."""
+    s = seeded_store
+    s.publish("ann", "v1")
+    rows = [{**r, "active": 1} for r in s.draft_snapshot()["rules"]]
+    rows[0]["priority"] = 10
+    s.apply_table("rule", rows, "ann", "change")
+    s.publish("ann", "v2")
+    assert s.ruleset().version_id == 2 and s.ruleset().priorities[1] == 10
+    pinned = s.ruleset(1)
+    assert pinned.version_id == 1 and pinned.priorities[1] == 50 and pinned.label.startswith("v1-")
+    with pytest.raises(ControlError):
+        s.ruleset(99)

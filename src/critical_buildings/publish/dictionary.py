@@ -1,7 +1,7 @@
 """Data dictionary, methodology, licences and release notes - generated on every run so they never go stale.
 
-Writes outputs/critical_buildings_data_dictionary.xlsx, outputs/ATTRIBUTION.txt and
-outputs/critical_buildings_summary.csv (a slim, easy view of the main dataset).
+Writes critical_buildings_data_dictionary.xlsx, ATTRIBUTION.txt and critical_buildings_summary.csv
+(a slim, easy view of the main dataset) into the run folder.
 """
 import datetime as dt
 from pathlib import Path
@@ -28,13 +28,13 @@ D = {
     "Name": ("Identity", "Best available name of the building.", "Hartismere Hospital"),
     # classification
     "Primary Category": ("Classification", "Final category after any override: Emergency, Care, Education, Transport, Government Buildings, Miscellaneous.", "Education"),
-    "Building Type": ("Classification", "Final building type after any override (a type from the Rules sheet).", "Primary School"),
+    "Building Type": ("Classification", "Final building type after any override (a Building Type defined by the rules).", "Primary School"),
     "Operational Importance": ("Classification", "Final operational importance after any override.", "High; Medium; Low"),
     "Primary Category Default": ("Classification", "Category assigned by the rules (before overrides).", "Emergency"),
     "Building Type Default": ("Classification", "Building type assigned by the rules (before overrides).", "Fire Station"),
     "Operational Importance Default": ("Classification", "Importance assigned by the rules.", "High"),
     "Operational Importance Driver Default": ("Classification", "Plain-English reason for the importance, from the rules.", "Emergency response"),
-    "Rule Notes": ("Classification", "Notes on the rule that classified the record, from the Rules sheet.", ""),
+    "Rule Notes": ("Classification", "Notes on the rule tag that classified the record, from the rules.", ""),
     "Classification Note": ("Classification", "Set when an authoritative source changed the building type chosen from OS/OSM.", "Building Type set from CQC (...); OS/OSM said Hospital"),
     "OS Rule Ref": ("Classification", "Rule number matched from OS Important Buildings (blank if none).", "17"),
     "OSM Rule Ref": ("Classification", "Rule number matched from OSM tags (blank if none).", "18"),
@@ -79,7 +79,7 @@ D = {
     "Match Method": ("Quality and review", "How the record was built: Overlap, Proximity, Proximity (names agree), OS only, OSM only, OSM area (no buildings), Authoritative only.", "Overlap"),
     "Confidence": ("Quality and review", "Confidence in the OS/OSM match: High (overlap), Medium, Low.", "High"),
     "Review Reason": ("Quality and review", "Why the record was flagged for a human look.", ""),
-    "Review Status": ("Quality and review", "Blank = nothing to review; Open = needs a decision; Decided = decision recorded in overrides.csv.", "Open"),
+    "Review Status": ("Quality and review", "Blank = nothing to review; Open = needs a decision; Decided = a decision is recorded (rules UI, Review & decisions).", "Open"),
     "Data Quality Score": ("Quality and review", "0-100 score of how well the record is evidenced (see 'Quality score' sheet).", "82"),
     "Data Quality Band": ("Quality and review", f"Band of the score: {_bands()}.", "High"),
     # location
@@ -93,7 +93,7 @@ D = {
     "Created By": ("Audit", "Who created it ('pipeline' for automatic).", "pipeline"),
     "Last Edit Date": ("Audit", "Date of the last run that produced the record.", "2026-10-01"),
     "Last Edit By": ("Audit", "Who last edited it.", "pipeline"),
-    "Rule Version": ("Audit", "Version stamp of the rules workbook used (date + content hash).", "2026-10-01-9d78ab"),
+    "Rule Version": ("Audit", "Version of the published rule set that produced the record: v<number>-<content hash>.", "v1-cdb511"),
     "Run Date": ("Audit", "Date of the pipeline run.", "2026-10-01"),
     # reserved
     "DESNZ Priority Consumer Category A Default": ("Reserved", "RESERVED, not populated. Kept so the schema matches the original design.", ""),
@@ -118,7 +118,7 @@ SITE_ONLY = {
 
 LIMITATIONS = [
     "Pilot area only: Suffolk. Counts and coverage will differ elsewhere.",
-    "Importance comes from the Rules sheet by building type. It is not an assessment of each individual building.",
+    "Importance comes from the rules, by building type. It is not an assessment of each individual building.",
     "OS Open Map Local has no coastguard, lifeboat, government or conference classes, so those types come from OSM only and depend on OSM mapping.",
     "OSM-only records are as good as the volunteer mapping. Verification only exists for types a register covers (schools, care homes, hospitals, hospices, GPs, clinics, mental health).",
     "Private nurseries are not in the DfE data, so nursery sites show Not covered rather than Unverified.",
@@ -174,7 +174,7 @@ def write_docs(df, sites, version, today, changes, out):
               "or legal team before distributing this dataset outside the organisation.", ""]
     (out / "ATTRIBUTION.txt").write_text("\n".join(lines), encoding="utf-8")
 
-    # ---- workbook ----
+    # ---- data dictionary workbook ----
     def dict_rows(cols, extra):
         rows = []
         for c in cols:
@@ -210,7 +210,7 @@ def write_docs(df, sites, version, today, changes, out):
         ("Verification", "Closed per register", "The matching register record is closed"),
         ("Verification", "Not covered", "No register exists for this building type"),
         ("Confidence", "High / Medium / Low", "High = OS and OSM footprints overlap; Low = only close together with differing names"),
-        ("Operational Importance", "High / Medium / Low", "From the Rules sheet by building type"),
+        ("Operational Importance", "High / Medium / Low", "From the rules, by building type"),
     ], columns=["Column", "Value", "Meaning"])
     quality = pd.DataFrame([
         ("Authoritative check (0-40)", "Verified, Verified (manual), Authoritative only = 40; Not covered = 20; Unverified = 10; Closed per register = 0"),
@@ -233,7 +233,7 @@ def write_docs(df, sites, version, today, changes, out):
         "5. Authoritative check: DfE, CQC and NHS ODS records are matched to sites by type, distance and name. Unmatched register records are added as new buildings; "
         "same-name records of a different type reclassify the site; sites no register recognises are marked Unverified.",
         "6. Roles: buildings are labelled Primary / Ancillary / Standalone / Whole site / Unknown from footprint size and OSM building tags (Role settings sheet).",
-        "7. Overrides: manual decisions in outputs/overrides.csv are applied last and survive reruns. Building IDs and Site IDs stay stable between runs.",
+        "7. Overrides: manual decisions recorded in the control store (rules UI, Review & decisions) are applied last and survive reruns. Building IDs and Site IDs stay stable between runs.",
         "8. Outputs, QA workbook, map and this dictionary are regenerated; changes since the previous run are listed in run_summary.xlsx.",
     ]})
     limits = pd.DataFrame({"Known limitation": LIMITATIONS})

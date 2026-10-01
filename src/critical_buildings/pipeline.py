@@ -15,12 +15,12 @@ from critical_buildings.silver import build as silver_build
 log = logging.getLogger(__name__)
 
 
-def check(area=paths.DEFAULT_AREA, store=None):
+def check(area=paths.DEFAULT_AREA, store=None, rules_version=None):
     """Everything that must be right before a run. Returns a list of plain-English problems (empty = ready)."""
     store = store or ControlStore()
     problems = list(config.validate())
     try:
-        rules = store.ruleset()
+        rules = store.ruleset(rules_version)
     except Exception as e:                                   # noqa: BLE001 - no published rule set yet
         return problems + [str(e)]
     problems += rules.errors
@@ -30,12 +30,13 @@ def check(area=paths.DEFAULT_AREA, store=None):
     return problems
 
 
-def run(area=paths.DEFAULT_AREA, run_type="dev", notes="", reuse_silver=True, store=None):
+def run(area=paths.DEFAULT_AREA, run_type="dev", notes="", reuse_silver=True, store=None, rules_version=None):
     """Build the area. Each run gets its own immutable gold folder and a row in the run registry.
 
+    rules_version: a published rule set number to use instead of the latest (to reproduce an old run).
     Returns a summary dict. On failure the run is marked failed and no partial output is left behind."""
     store = store or ControlStore()
-    rules = store.ruleset().require_valid()
+    rules = store.ruleset(rules_version).require_valid()
     for w in rules.warnings:
         log.info("note: %s", w)
     previous_run_id, previous = runs.load_previous(area)

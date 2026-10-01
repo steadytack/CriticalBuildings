@@ -1,6 +1,6 @@
 """Building role within a site: Standalone / Primary / Ancillary / Whole site / Unknown.
 
-Rules, in order (thresholds and lists come from the 'Role settings' sheet of the rules workbook):
+Rules, in order (thresholds and lists come from the role settings in the rules store; edit them in the UI):
   1. Record is a site area with no buildings inside  -> Whole site (method 'OSM area (no buildings)')
   2. Only building at its site                       -> Standalone
   3. Point only (no footprint)                       -> Unknown

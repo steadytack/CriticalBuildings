@@ -8,28 +8,31 @@ SRC_COLOURS = {"Both": "#000000", "OS Important Buildings": "#1f4e9c", "OSM": "#
 
 
 def suggest_action(reason):
+    """Plain-English next step for a review item. Decisions are recorded in the rules UI (Review & decisions tab)."""
     r = str(reason)
     if "no building within" in r:
-        return "Check the point on the map. If it is on a real building accept it; if the site has closed set Exclude (Y)."
+        return "Check the point on the map. If it is on a real building accept it; if the site has closed, exclude it."
     if "Possible duplicate" in r:
-        return "If this is the same place as the existing site named, set Exclude (Y) on this record."
+        return "If this is the same place as the existing site named, exclude this record."
     if "Proximity-only" in r:
         return "Open on the map. If both features are the same building, accept; if different buildings, tell the data owner."
     if "OS rule" in r:
-        return "Set Building Type Override to the correct type, or accept."
+        return "Record the correct Building Type override, or accept."
     if "OSM candidates" in r:
         return "Accept unless the map shows the wrong OSM feature was chosen."
+    if "away from the OS/OSM location" in r:
+        return "The registers and OS/OSM disagree on where this is. Check on the map which is right, then accept or exclude."
     return "Check on the map, then accept or correct."
 
 
 def suggest_verification_action(verification, note):
     note = str(note)
     if verification == "Closed per register":
-        return "Confirm the closure, then set Exclude Site (Y) in overrides.csv (or Verification Override if still open)."
+        return "Confirm the closure, then exclude the whole site, or record a Verification Override if it is still open."
     if note.startswith("Nearest authoritative record not matched"):
-        return ("If the nearest record is the same place, set Verification Override = 'Verified (manual)'. "
+        return ("If the nearest record is the same place, record a Verification Override of 'Verified (manual)'. "
                 "Otherwise check the site is still open.")
-    return "No register recognises this site. Check it is still open (e.g. NHS / CQC / Google); if not set Exclude Site (Y)."
+    return "No register recognises this site. Check it is still open (e.g. NHS / CQC / Google); if not, exclude the site."
 
 
 def write_reports(df, changes, version, today, new_ids, os_total, out, sites=None, ref=None, ref_gaps=None,

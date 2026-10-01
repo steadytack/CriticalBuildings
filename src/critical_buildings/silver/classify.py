@@ -1,4 +1,4 @@
-"""Apply the Rules sheet to OSM and OS Open Map Local features.
+"""Apply the rule tags to OSM and OS Open Map Local features.
 
 Every returned row has: source, source_id, name, rule_ref, category, building_type, importance, driver,
 matched_refs (all rules that matched), note, geometry (EPSG:27700).

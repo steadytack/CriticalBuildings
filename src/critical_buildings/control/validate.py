@@ -1,6 +1,6 @@
 """Plain-English checks on a rule set snapshot. Used by the UI (drafts), by Publish, and by the pipeline's first step.
 
-Same checks and wording as the old workbook-based rules check, now on the normalised model.
+The checks first written for the Excel rules workbook, now on the normalised rule model.
 Each function returns messages; errors block saving/publishing, warnings are notes.
 """
 import difflib
@@ -107,7 +107,7 @@ def check_reference_mapping(snapshot):
         if not str(m["field"] or "").strip() or not str(m["value"] or "").strip():
             errors.append(f"{where}: Field and Value must be filled in.")
         if m["building_type"] != "IGNORE" and m["building_type"] not in valid_types:
-            errors.append(f"{where}: Building Type '{m['building_type']}' is not a Building Type on the Rules sheet.")
+            errors.append(f"{where}: Building Type '{m['building_type']}' is not the Building Type of any rule.")
     return errors
 
 
