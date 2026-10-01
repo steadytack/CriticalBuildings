@@ -58,12 +58,9 @@ def assign_ids(recs, today, store, run_id):
     return recs, new
 
 
-def assign_site_ids(recs, sites, today, store, run_id, previous_buildings=None):
-    """Stable Site IDs: a site keeps the ID most of its buildings had in the previous run.
-
-    previous_buildings: DataFrame of the previous run's buildings (Building ID, Site ID), or None on a first run."""
-    prev = previous_buildings if previous_buildings is not None else pd.DataFrame()
-    old_site = {b: s for b, s in zip(prev["Building ID"], prev["Site ID"]) if s} if "Site ID" in prev else {}
+def assign_site_ids(recs, sites, today, store, run_id):
+    """Stable Site IDs: a site keeps the ID most of its buildings were last assigned (remembered in the registry)."""
+    old_site = store.building_site_map()
     reg = store.site_registry_df()
     created = dict(zip(reg.site_id, reg.created))
     nxt = (reg.site_id.str[5:].astype(int).max() + 1) if len(reg) else 1
@@ -83,4 +80,5 @@ def assign_site_ids(recs, sites, today, store, run_id, previous_buildings=None):
     sites["Site ID"] = sites.site_group.map(mapping)
     sites["Created Date"] = sites["Site ID"].map(created)
     store.save_site_registry({sid: created[sid] for sid in mapping.values()}, run_id)
+    store.set_building_sites(dict(zip(recs["Building ID"], recs["Site ID"])))
     return recs, sites

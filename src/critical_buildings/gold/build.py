@@ -37,7 +37,7 @@ def build(silver, rules, store, run_id, today, previous_buildings=None, area=pat
     log.info("  %s reference records: %s matched to sites, %s added as new buildings",
              len(silver.ref), ref_matches.ri.nunique(), len(ref_gaps))
     recs, new_ids = ids.assign_ids(recs, today, store, run_id)
-    recs, sites_df = ids.assign_site_ids(recs, sites_df, today, store, run_id, previous_buildings)
+    recs, sites_df = ids.assign_site_ids(recs, sites_df, today, store, run_id)
     recs = roles.assign_roles(recs, rules.role)
     df, sites_out = assemble.assemble(recs, sites_df, rules.label, today, store)
     changes = change_tracking.diff_runs(previous_buildings, df) if previous_buildings is not None else None

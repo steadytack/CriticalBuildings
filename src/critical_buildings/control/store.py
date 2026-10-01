@@ -16,7 +16,8 @@ from critical_buildings import paths
 from critical_buildings.control import ruleset as rs
 from critical_buildings.control import validate
 
-SCHEMA_VERSION = 1
+MIGRATIONS = [(1, "schema.sql"), (2, "migrations/002_runs.sql"), (3, "migrations/003_registry_site.sql")]     # (schema version, file); applied in order
+SCHEMA_VERSION = MIGRATIONS[-1][0]
 
 RULE_COLS = ["rule_ref", "primary_category", "building_type", "importance", "importance_driver", "priority", "active", "notes"]
 TAG_COLS = ["id", "rule_ref", "source", "tag", "active", "notes"]
@@ -77,9 +78,11 @@ class ControlStore:
     def _init_schema(self):
         with self.conn() as c:
             version = c.execute("PRAGMA user_version").fetchone()[0]
-            if version == 0:
-                c.executescript((Path(__file__).parent / "schema.sql").read_text(encoding="utf-8"))
-                c.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            for target, filename in MIGRATIONS:
+                if version < target:
+                    c.executescript((Path(__file__).parent / filename).read_text(encoding="utf-8"))
+                    c.execute(f"PRAGMA user_version = {target}")
+                    version = target
 
     def _log(self, c, user, table, key, action, old, new, reason):
         c.execute("INSERT INTO change_log (ts, user, table_name, key, action, old_json, new_json, reason) VALUES (?,?,?,?,?,?,?,?)",
@@ -277,6 +280,18 @@ class ControlStore:
             c.execute("UPDATE building_registry SET retired_run = ? WHERE retired_run IS NULL AND last_seen_run != ?",
                       (run_id, run_id))
 
+    def building_site_map(self):
+        """{building_id: site_id it was last assigned to} (empty strings and NULLs are left out)."""
+        with self.conn() as c:
+            return {r["building_id"]: r["site_id"] for r in c.execute(
+                "SELECT building_id, site_id FROM building_registry WHERE site_id IS NOT NULL AND site_id != ''")}
+
+    def set_building_sites(self, mapping):
+        """mapping: {building_id: site_id}. Called after Site IDs are assigned."""
+        with self.conn() as c:
+            c.executemany("UPDATE building_registry SET site_id = ? WHERE building_id = ?",
+                          [(site, bid) for bid, site in mapping.items()])
+
     def site_registry_df(self):
         df = self.table_df("site_registry", "site_id")
         return df[["site_id", "created"]]
@@ -289,3 +304,48 @@ class ControlStore:
                           "ON CONFLICT(site_id) DO UPDATE SET last_seen_run = excluded.last_seen_run, retired_run = NULL",
                           (sid, when, run_id, run_id))
             c.execute("UPDATE site_registry SET retired_run = ? WHERE retired_run IS NULL AND last_seen_run != ?", (run_id, run_id))
+
+    # ------------------------------------------------------------ runs and releases
+    def insert_run(self, row):
+        with self.conn() as c:
+            names = ", ".join(row)
+            c.execute(f"INSERT INTO run ({names}) VALUES ({', '.join('?' * len(row))})", tuple(row.values()))
+
+    def update_run(self, run_id, **fields):
+        with self.conn() as c:
+            sets = ", ".join(f"{k} = ?" for k in fields)
+            c.execute(f"UPDATE run SET {sets} WHERE run_id = ?", (*fields.values(), run_id))
+
+    def get_run(self, run_id):
+        with self.conn() as c:
+            row = c.execute("SELECT * FROM run WHERE run_id = ?", (run_id,)).fetchone()
+        return dict(row) if row else None
+
+    def runs_df(self, area=None):
+        with self.conn() as c:
+            q = "SELECT * FROM run" + (" WHERE area = ?" if area else "") + " ORDER BY started_at DESC"
+            return pd.read_sql_query(q, c, params=(area,) if area else ())
+
+    def add_run_changes(self, run_id, changes_df):
+        if changes_df is None or changes_df.empty:
+            return
+        with self.conn() as c:
+            c.executemany(
+                "INSERT INTO run_change (run_id, building_id, change, before_value, after_value, source_feature_id) VALUES (?,?,?,?,?,?)",
+                [(run_id, r["Building ID"], r["Change"], r["Before / Type"], r["After"], r["Source Feature ID"])
+                 for r in changes_df.to_dict("records")])
+
+    def run_changes_df(self, run_id):
+        with self.conn() as c:
+            return pd.read_sql_query("SELECT * FROM run_change WHERE run_id = ?", c, params=(run_id,))
+
+    def insert_release(self, release, area, run_id, user, notes=""):
+        with self.conn() as c:
+            c.execute("INSERT INTO release (release, area, run_id, released_at, released_by, notes) VALUES (?,?,?,?,?,?)",
+                      (release, area, run_id, now(), user, notes))
+            c.execute("UPDATE run SET run_type = 'release' WHERE run_id = ?", (run_id,))
+            self._log(c, user, "release", release, "publish", None, {"run_id": run_id, "area": area}, notes or "release")
+
+    def releases_df(self):
+        with self.conn() as c:
+            return pd.read_sql_query("SELECT * FROM release ORDER BY released_at DESC", c)
