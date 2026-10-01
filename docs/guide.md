@@ -3,7 +3,7 @@
 How the pipeline is built, how to change the rules, how runs and archives work, how lineage is recorded, and how to
 contribute. Ownership, quality checks, licensing and the reasons behind design choices are in [governance.md](governance.md).
 
-Contents: [Layers](#layers) · [Stages and code map](#stages-and-code-map) · [Rules](#rules) · [Runs, releases and archiving](#runs-releases-and-archiving) · [Lineage](#lineage) · [Adding an area or a source](#adding-an-area-or-a-source) · [Contributing](#contributing)
+Contents: [Layers](#layers) · [Stages and code map](#stages-and-code-map) · [Rules](#rules) · [Runs, releases and archiving](#runs-releases-and-archiving) · [Lineage](#lineage) · [Visual pipelines](#visual-pipelines-duckle) · [Adding an area or a source](#adding-an-area-or-a-source) · [Contributing](#contributing)
 
 ## Layers
 
@@ -203,6 +203,28 @@ flowchart LR
 **"Why is this building like this?"** Find it by `Building ID`; read `Source Feature ID`, `Match Method`, `All Matched Rule
 Refs`. `Rule Version` gives the rule set (UI *Versions & history*, or `governed/dumps/rule_tag.csv` in git history). The run's
 `lineage.json` gives the input files. `governed/dumps/override.csv` and the audit trail show any manual decision.
+
+## Visual pipelines (Duckle)
+
+`pipelines/*.json` are [Duckle](https://duckle.org) pipelines: open one in the Duckle desktop app to see and edit it as a
+canvas (drag nodes, preview each step), or run it headless. They are plain JSON, so changes show in git diffs.
+`pip install -e ".[canvas]"` installs the headless runner. Run from the repository folder:
+
+| Pipeline | Does | Run |
+|---|---|---|
+| `fetch_sources` | `fetch`: new bronze snapshots only if the data changed | `duckle --pipeline pipelines/fetch_sources.json --workspace data/duckle` |
+| `build_dataset` | checks, then `run` (silver > gold > publish) as a candidate run | `duckle --pipeline pipelines/build_dataset.json --workspace data/duckle` |
+| `review_latest_run` | SQL over the run registry in `governed/control.db`: counts not empty, within 10% of the previous run | `duckle --pipeline pipelines/review_latest_run.json --workspace data/duckle` |
+| `release_run` | `release` the current run | `duckle --pipeline pipelines/release_run.json --workspace data/duckle --param RELEASE_NAME=v2026.10.0` |
+
+Exit code 0 = success, 1 = a step or assertion failed. Run receipts and small result files go to `data/duckle/`.
+
+How it fits: the geospatial logic stays in this package and is called by a shell node (`python -m critical_buildings ...`);
+Duckle supplies the canvas, run history, parameters and SQL steps. The rules store stays ours (edited in the rules UI) and
+Duckle reads it through SQLite. Two things to know: a shell step that fails does not fail the node by itself, so every step is
+followed by an assertion on its exit code and a sink (assertions only run when something downstream consumes them); and
+order is only guaranteed along edges that carry data, so the check and the build are one step. Duckle is version 0.x, so
+the extra pins it below 0.8.
 
 ## Adding an area or a source
 

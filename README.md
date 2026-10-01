@@ -93,6 +93,8 @@ the editor. Decisions are saved against the building and survive reruns.
 **Tidy up old data:** `python -m critical_buildings archive` shows what could be archived (dry run);
 `archive --apply` does it; `restore` brings something back. Nothing a release depends on is ever touched. See [the run lifecycle](docs/guide.md#runs-releases-and-archiving).
 
+**Run it from a visual canvas:** the pipelines in `pipelines/` open in [Duckle](https://duckle.org) (fetch, build, review, release). See [the guide](docs/guide.md#visual-pipelines-duckle).
+
 **Read the rules in Excel:** `python -m critical_buildings export-excel` writes a read-only workbook.
 
 ## What is in this repository
@@ -101,6 +103,7 @@ the editor. Decisions are saved against the building and survive reruns.
 settings.yml       settings you can tune: thresholds, areas, data sources (one file)
 governed/          control.db = the rules store (committed), dumps/ = text copies so rule changes show in git diffs
 src/critical_buildings/   the code: sources.py, silver/, gold/, publish.py (the layers), control/ (rules store), ui/ (editor), cli.py
+pipelines/         Duckle pipeline files (visual canvas / headless runs)
 tests/             automated tests (unit + an end-to-end regression against a golden baseline)
 docs/              guide.md (how it works, rules, runs, lineage, contributing) and governance.md (roles, checks, licences, decisions)
 data/              (not in git)  bronze/ silver/ gold/ published/ archive/

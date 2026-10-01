@@ -1,0 +1,106 @@
+{
+  "name": "review_latest_run",
+  "nodes": [
+    {
+      "id": "registry",
+      "type": "source",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "label": "Run registry",
+        "componentId": "src.sqlite",
+        "properties": {
+          "database": "governed/control.db",
+          "mode": "table",
+          "tableName": "run"
+        }
+      }
+    },
+    {
+      "id": "runs",
+      "type": "custom",
+      "position": {
+        "x": 220,
+        "y": 0
+      },
+      "data": {
+        "label": "Latest two successful runs, with previous count",
+        "componentId": "code.sql",
+        "properties": {
+          "sql": "SELECT * FROM (SELECT run_id, run_type, rule_version_label, buildings, sites, previous_run_id, finished_at, LAG(buildings) OVER (ORDER BY started_at) AS prev_buildings FROM input WHERE status = 'succeeded') ORDER BY finished_at DESC LIMIT 2"
+        }
+      }
+    },
+    {
+      "id": "sane",
+      "type": "transform",
+      "position": {
+        "x": 440,
+        "y": 0
+      },
+      "data": {
+        "label": "Buildings and sites are not empty",
+        "componentId": "xf.assert",
+        "properties": {
+          "predicate": "buildings > 0 AND sites > 0",
+          "message": "A run has no buildings or no sites"
+        }
+      }
+    },
+    {
+      "id": "stable",
+      "type": "transform",
+      "position": {
+        "x": 660,
+        "y": 0
+      },
+      "data": {
+        "label": "Building count within 10% of the previous run",
+        "componentId": "xf.assert",
+        "properties": {
+          "predicate": "prev_buildings IS NULL OR abs(buildings - prev_buildings) <= 0.1 * prev_buildings",
+          "message": "Building count moved more than 10% against the previous run - review before releasing"
+        }
+      }
+    },
+    {
+      "id": "report",
+      "type": "sink",
+      "position": {
+        "x": 880,
+        "y": 0
+      },
+      "data": {
+        "label": "Write run review",
+        "componentId": "snk.csv",
+        "properties": {
+          "path": "data/duckle/run_review.csv"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "registry",
+      "target": "runs"
+    },
+    {
+      "id": "e2",
+      "source": "runs",
+      "target": "sane"
+    },
+    {
+      "id": "e3",
+      "source": "sane",
+      "target": "stable"
+    },
+    {
+      "id": "e4",
+      "source": "stable",
+      "target": "report"
+    }
+  ]
+}
