@@ -126,6 +126,8 @@ UPRN counts and the DESNZ/BUUK columns are reserved but not populated. The full 
 - **`check` says there is no bronze data:** run `fetch` first (the data folder is not in git).
 - **A permission error on a file in OneDrive:** another program (Excel, QGIS) has it open. Close it, or keep the repository
   outside OneDrive; the data folder and `.venv` sync poorly.
+- **Lines like "Can't load requested DLL ... gdalplugins\gdal_*.dll" during a run:** a system-wide GDAL install on your
+  PATH is being probed. Harmless; ignore them (or remove the stray GDAL entry from PATH / `GDAL_DRIVER_PATH`).
 - **Windows shows "fatal exception" lines in a test run:** harmless DLL-loading noise; tests disable that handler.
 - **The UI says nothing is published:** a fresh store needs a first version: `control init --from-excel <workbook>`.
 
