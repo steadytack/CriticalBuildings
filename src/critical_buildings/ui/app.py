@@ -11,7 +11,7 @@ from critical_buildings import paths, runs
 from critical_buildings.control import dumps
 from critical_buildings.control import ruleset as rs
 from critical_buildings.control.store import ControlError, ControlStore, current_user
-from critical_buildings.publish.qa_report import suggest_action
+from critical_buildings.publish import suggest_action
 from critical_buildings.ui import logic
 
 st.set_page_config(page_title="Critical Buildings - rules", page_icon=":building_construction:", layout="wide")
@@ -372,7 +372,7 @@ def tab_help():
 3. **Publish** (sidebar) freezes the draft as a numbered, immutable **version**. Runs always use a published version, so any past run can be reproduced.
 4. **Run** the pipeline: `python -m critical_buildings run`. The output records which rule version made it.
 
-**Reviewing a change in git:** every save and publish rewrites plain-text copies in `control/dumps/`, so a rule change shows up as a normal diff.
+**Reviewing a change in git:** every save and publish rewrites plain-text copies in `governed/dumps/`, so a rule change shows up as a normal diff.
 
 **Tag formats**: OSM `key=value` (no spaces; `key=*` means any value) - OS `Theme > Classification` - MANUAL for no automatic tag.
 

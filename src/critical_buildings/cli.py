@@ -33,11 +33,11 @@ def cmd_check(args):
 
 
 def cmd_fetch(args):
-    from critical_buildings import bronze
+    from critical_buildings import sources
     from critical_buildings.control.store import ControlStore
     rules = ControlStore().ruleset().require_valid()
     only = args.only.split(",") if args.only else None
-    results = bronze.fetch_all(rules, args.area, only, args.dry_run)
+    results = sources.fetch_all(rules, args.area, only, args.dry_run)
     for name, res in results.items():
         print(f"{name}: {res['status']}" + (f" ({res['snapshot']})" if "snapshot" in res else ""))
     return 0

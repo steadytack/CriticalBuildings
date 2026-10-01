@@ -1,3 +1,4 @@
+# Settings: technical thresholds, areas and the source catalogue in one file.
 # Pipeline settings: every threshold the matching, grouping and scoring logic uses.
 # Business rules (what counts as a fire station, importance, priorities) are NOT here: they live in the governed
 # control store (python -m critical_buildings ui). These are technical tuning values; change them deliberately and
@@ -65,3 +66,95 @@ retention:                                  # used by `archive` (dry-run by defa
   silver_keep: 2                            # latest silver builds kept per area
   gold_keep: 5                              # latest gold runs kept per area
   dev_run_days: 14                          # dev runs older than this are eligible for pruning
+
+# ---- Areas: one entry per pilot/production area. `python -m critical_buildings run --area suffolk`
+areas:
+  suffolk:
+    name: Suffolk
+    description: Pilot area - the ceremonial county of Suffolk, England.
+
+    # OpenStreetMap boundary relation used to clip every source. Pin by government code, not by name:
+    # a name-only query also matches Suffolk, Virginia.
+    osm_boundary:
+      ref_gss: E10000029
+      admin_level: 6
+
+    # OS Open Map Local 100 km grid squares that cover the area (OS downloads are per square)
+    os_grid_squares: [tl, tm, tg]
+
+    crs: 27700        # British National Grid - all processing happens in this CRS
+
+# ---- Source catalogue: every external dataset. Licence/attribution are copied into each bronze manifest and the
+# published ATTRIBUTION.txt. To add a source: add an entry, a fetcher in sources.py, and a silver reader.
+sources:
+
+  osm_overpass:
+    name: OpenStreetMap (Overpass API)
+    kind: api
+    area_scoped: true            # one snapshot series per area: osm_overpass__<area>
+    url: https://overpass-api.de/api/interpreter
+    licence: Open Database Licence (ODbL) 1.0
+    attribution: "(c) OpenStreetMap contributors"
+    uses: Tagged features (amenities, healthcare, emergency ...) and buildings inside port/military/aerodrome areas
+    refresh: monthly
+    owner: data engineering
+
+  os_open_map_local:
+    name: OS Open Map Local
+    kind: download
+    url: "https://api.os.uk/downloads/v1/products/OpenMapLocal/downloads?area={tile}&format=ESRI%C2%AE+Shapefile&redirect"
+    licence: Open Government Licence v3.0
+    attribution: Contains OS data (c) Crown copyright and database right 2026
+    uses: ImportantBuilding, FunctionalSite, RailwayStation and Building layers by 100 km grid square
+    refresh: six-monthly (OS release cycle)
+    owner: data engineering
+
+  os_codepoint_open:
+    name: OS Code-Point Open
+    kind: download
+    url: "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
+    licence: Open Government Licence v3.0
+    attribution: >-
+      Contains OS data (c) Crown copyright and database right 2026; contains Royal Mail data (c) Royal Mail copyright
+      and database right 2026; contains National Statistics data (c) Crown copyright and database right 2026
+    uses: Postcode to coordinates (NHS ODS sites; register location checks)
+    refresh: quarterly
+    owner: data engineering
+
+  dfe_gias:
+    name: DfE Get Information About Schools
+    kind: download
+    url: "https://ea-edubase-api-prod.azurewebsites.net/edubase/downloads/public/edubasealldata{yyyymmdd}.csv"
+    licence: Open Government Licence v3.0
+    attribution: >-
+      Contains public sector information licensed under the Open Government Licence v3.0.
+      Source: Department for Education
+    uses: Open schools, phase, pupil numbers, location
+    refresh: monthly
+    owner: data steward
+
+  cqc_hsca:
+    name: CQC HSCA active locations
+    kind: download
+    page: https://www.cqc.org.uk/about-us/transparency/using-cqc-data      # the file link changes every month
+    link_pattern: "HSCA_Active_Locations\\.ods"
+    licence: Open Government Licence v3.0
+    attribution: >-
+      Contains public sector information licensed under the Open Government Licence v3.0.
+      Source: Care Quality Commission
+    uses: Care homes, hospices, hospitals, GPs, clinics - beds, rating, UPRN, location
+    refresh: monthly
+    owner: data steward
+
+  nhs_ods:
+    name: NHS Organisation Data Service
+    kind: download
+    url: "https://www.odsdatasearchandexport.nhs.uk/api/getReport?report={report}"
+    reports: [ets, etr, epraccur]
+    licence: Open Government Licence v3.0
+    attribution: >-
+      Contains public sector information licensed under the Open Government Licence v3.0.
+      Source: NHS England Organisation Data Service
+    uses: Trust sites, trusts and GP practices - ODS codes, status, parent trust
+    refresh: monthly
+    owner: data steward

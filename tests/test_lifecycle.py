@@ -8,7 +8,7 @@ import pytest
 
 from critical_buildings import config, lineage, paths, retention, runs
 from critical_buildings.control.store import ControlError
-from critical_buildings.publish.outputs import DELIVERABLES
+from critical_buildings.publish import DELIVERABLES
 
 NOW = dt.datetime(2026, 10, 1, tzinfo=dt.timezone.utc)
 

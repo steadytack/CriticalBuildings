@@ -1,6 +1,6 @@
 import pytest
 
-from critical_buildings.matching.names import name_similarity, strict_similarity
+from critical_buildings.gold.merge import name_similarity, strict_similarity
 
 
 @pytest.mark.parametrize("a,b,low,high", [

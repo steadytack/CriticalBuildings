@@ -11,11 +11,11 @@ import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from critical_buildings import config
-from critical_buildings.bronze import manifest
-from critical_buildings.gold import quality
+from critical_buildings import sources
+from critical_buildings.gold import steps
 
 # ------------------------------------------------------------------ data quality score
-_bands = quality.bands_label
+_bands = steps.bands_label
 
 
 # ------------------------------------------------------------------ column dictionary
@@ -142,8 +142,8 @@ def _check_complete(df, sites):
 
 def _source_dates():
     """One row per source: catalogue text + the manifest of the snapshot in use (what we used, when, how big)."""
-    catalogue = manifest.load_sources()
-    snaps = {m["source"]: m for m in manifest.all_manifests()}
+    catalogue = sources.load_sources()
+    snaps = {m["source"]: m for m in sources.all_manifests()}
     out = []
     for key, cat in catalogue.items():
         m = snaps.get(key)

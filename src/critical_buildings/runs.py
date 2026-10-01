@@ -2,7 +2,7 @@
 
     data/gold/<area>/<run_id>/        everything one run produced (+ lineage.json). Never modified after the run.
     data/gold/<area>/CURRENT.json     {"run_id": ...} - the latest successful run (what the next run diffs against)
-    published/<area>/<release>/       a copy of one run's deliverables, kept permanently
+    data/published/<area>/<release>/       a copy of one run's deliverables, kept permanently
 """
 import datetime as dt
 import json
@@ -14,7 +14,7 @@ import pandas as pd
 
 from critical_buildings import config, lineage, paths
 from critical_buildings.control.store import ControlError, current_user, now
-from critical_buildings.publish.outputs import DELIVERABLES
+from critical_buildings.publish import DELIVERABLES
 
 
 @dataclass
@@ -80,7 +80,7 @@ def start(store, area, run_type, rules, notes="", previous_run_id=None, user=Non
 
 
 def finish(store, ctx, rules, silver_key, silver_reused, gold):
-    area_hash = lineage.hashlib.sha256((paths.CONFIG / "areas" / f"{ctx.area}.yml").read_bytes()).hexdigest()[:12]
+    area_hash = lineage.hashlib.sha256(json.dumps(config.load_area(ctx.area), sort_keys=True).encode()).hexdigest()[:12]
     lin = lineage.build_lineage(ctx, rules, silver_key, silver_reused, gold, ctx.dir, DELIVERABLES,
                                 config.settings_hash(), area_hash)
     lin["finished_at"] = now()
@@ -108,7 +108,7 @@ def next_release_name(store, today=None):
 
 
 def release(store, area, name=None, run_id=None, notes="", user=None):
-    """Copy one run's deliverables to published/<area>/<name>/ (immutable) and record the release."""
+    """Copy one run's deliverables to data/published/<area>/<name>/ (immutable) and record the release."""
     run_id = run_id or current_run_id(area)
     if not run_id:
         raise ControlError("No successful run to release. Run: python -m critical_buildings run")

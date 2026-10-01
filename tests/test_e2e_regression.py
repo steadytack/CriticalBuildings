@@ -21,11 +21,11 @@ pytestmark = pytest.mark.slow
 
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
-    real_control = REPO / "control" / "control.db"
+    real_control = REPO / "governed" / "control.db"
     if not (REPO / "data" / "bronze" / "dfe_gias").exists() or not real_control.exists() or not BASELINE.exists():
         pytest.skip("real bronze data / control store / baseline not available")
-    shutil.copytree(REPO / "control", tmp_path / "control")
-    monkeypatch.setattr(paths, "CONTROL", tmp_path / "control")
+    shutil.copytree(REPO / "governed", tmp_path / "governed")
+    monkeypatch.setattr(paths, "CONTROL", tmp_path / "governed")
     monkeypatch.setattr(paths, "GOLD", tmp_path / "gold")
     monkeypatch.setattr(paths, "SILVER", tmp_path / "silver")
     # reuse the (slow-to-build, rule-independent) conformed tables so the test exercises classification, merging and
@@ -49,7 +49,7 @@ def test_pipeline_reproduces_the_golden_baseline_with_and_without_silver_reuse(s
 
 
 def test_cli_check_passes_on_the_real_repository():
-    if not (REPO / "control" / "control.db").exists():
+    if not (REPO / "governed" / "control.db").exists():
         pytest.skip("no control store")
     out = subprocess.run([sys.executable, "-m", "critical_buildings", "check"], cwd=REPO, capture_output=True, text=True)
     assert out.returncode == 0 and "All checks passed" in out.stdout

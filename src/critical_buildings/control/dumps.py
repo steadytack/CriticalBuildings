@@ -1,6 +1,6 @@
 """Deterministic text dumps of the governed tables, so rule changes show up as normal git diffs.
 
-control.db is binary; reviewers read control/dumps/*.csv instead. The dumps are regenerated on every publish/save
+control.db is binary; reviewers read governed/dumps/*.csv instead. The dumps are regenerated on every publish/save
 and are read-only artefacts: edit through the UI (or the store API), never by hand.
 """
 import json
@@ -33,7 +33,7 @@ def write_dumps(store, out_dir=None):
     cl = store.table_df("change_log", "id")
     dump("change_log.csv", cl)
     (out / "README.md").write_text(
-        "# control/dumps\n\nRead-only text exports of `control/control.db` so that changes can be reviewed as ordinary git diffs.\n"
+        "# governed/dumps\n\nRead-only text exports of `governed/control.db` so that changes can be reviewed as ordinary git diffs.\n"
         "Regenerated automatically on save/publish (`python -m critical_buildings control dump`). **Do not edit these files**: "
         "make changes in the rules UI (`python -m critical_buildings ui`).\n", encoding="utf-8")
     return sorted(p.name for p in out.glob("*.csv"))

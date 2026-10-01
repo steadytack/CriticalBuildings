@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from critical_buildings import config
-from critical_buildings.gold import ids
+from critical_buildings.gold import steps
 from helpers import square
 
 
@@ -20,41 +20,41 @@ C = ("OS Important Buildings", "os-c", square(200, 0))
 
 # ------------------------------------------------------------------ building IDs
 def test_building_ids_are_stable_across_runs(store):
-    first, new1 = ids.assign_ids(recs_of(A, B, C), "2026-10-01", store, "run1")
+    first, new1 = steps.assign_ids(recs_of(A, B, C), "2026-10-01", store, "run1")
     assert list(first["Building ID"]) == ["BLDG-000001", "BLDG-000002", "BLDG-000003"] and new1 == 3
-    second, new2 = ids.assign_ids(recs_of(C, A, B), "2026-11-01", store, "run2")          # different order
+    second, new2 = steps.assign_ids(recs_of(C, A, B), "2026-11-01", store, "run2")          # different order
     assert dict(zip(second.source_feature_id, second["Building ID"])) == dict(zip(first.source_feature_id, first["Building ID"]))
     assert new2 == 0
     assert (second["Created Date"].isin(["2026-10-01"])).all()                              # created date is kept
 
 
 def test_an_osm_feature_redrawn_under_a_new_id_keeps_its_building_id(store):
-    first, _ = ids.assign_ids(recs_of(A, B), "d", store, "run1")
+    first, _ = steps.assign_ids(recs_of(A, B), "d", store, "run1")
     redrawn = ("OSM", "way/999", square(2, 2, 96))                  # overlaps B's old footprint? no: overlaps nothing
     moved_b = ("OSM", "way/999", square(101, 1))                    # same place as B, new OSM id
-    second, new = ids.assign_ids(recs_of(A, moved_b), "d", store, "run2")
+    second, new = steps.assign_ids(recs_of(A, moved_b), "d", store, "run2")
     assert second["Building ID"].tolist() == first["Building ID"].tolist() and new == 0
     assert redrawn  # (kept to document the non-overlapping case below)
 
 
 def test_an_osm_only_building_that_gains_an_os_match_keeps_its_id(store):
-    first, _ = ids.assign_ids(recs_of(B), "d", store, "run1")
-    second, _ = ids.assign_ids(recs_of(("Both", "os-new / way/2", square(100, 0))), "d", store, "run2")
+    first, _ = steps.assign_ids(recs_of(B), "d", store, "run1")
+    second, _ = steps.assign_ids(recs_of(("Both", "os-new / way/2", square(100, 0))), "d", store, "run2")
     assert second["Building ID"].tolist() == first["Building ID"].tolist()
 
 
 def test_new_buildings_get_the_next_number_and_ids_are_never_reused(store):
-    ids.assign_ids(recs_of(A, B, C), "d", store, "run1")
-    ids.assign_ids(recs_of(A, B), "d", store, "run2")               # C disappears (retired, not deleted)
-    third, new = ids.assign_ids(recs_of(A, B, ("OSM", "way/77", square(900, 900))), "d", store, "run3")
+    steps.assign_ids(recs_of(A, B, C), "d", store, "run1")
+    steps.assign_ids(recs_of(A, B), "d", store, "run2")               # C disappears (retired, not deleted)
+    third, new = steps.assign_ids(recs_of(A, B, ("OSM", "way/77", square(900, 900))), "d", store, "run3")
     assert third["Building ID"].tolist() == ["BLDG-000001", "BLDG-000002", "BLDG-000004"] and new == 1
     assert len(store.table_df("building_registry")) == 4
 
 
 def test_a_retired_building_that_returns_gets_its_old_id_back(store):
-    ids.assign_ids(recs_of(A, C), "d", store, "run1")
-    ids.assign_ids(recs_of(A), "d", store, "run2")
-    back, new = ids.assign_ids(recs_of(A, C), "d", store, "run3")
+    steps.assign_ids(recs_of(A, C), "d", store, "run1")
+    steps.assign_ids(recs_of(A), "d", store, "run2")
+    back, new = steps.assign_ids(recs_of(A, C), "d", store, "run3")
     assert back["Building ID"].tolist() == ["BLDG-000001", "BLDG-000002"] and new == 0
 
 
@@ -64,31 +64,31 @@ def sites_of(*counts):
 
 
 def with_ids(store, rows, groups):
-    r, _ = ids.assign_ids(recs_of(*rows), "d", store, "r")
+    r, _ = steps.assign_ids(recs_of(*rows), "d", store, "r")
     r["site_group"] = groups
     return r
 
 
 def test_site_ids_follow_their_buildings_even_if_group_numbers_change(store):
     r1 = with_ids(store, [A, B, C], [1, 1, 2])
-    out1, s1 = ids.assign_site_ids(r1, sites_of(2, 1), "d", store, "run1")
+    out1, s1 = steps.assign_site_ids(r1, sites_of(2, 1), "d", store, "run1")
     sid_ab, sid_c = out1.loc[0, "Site ID"], out1.loc[2, "Site ID"]
     assert {sid_ab, sid_c} == {"SITE-000001", "SITE-000002"}
     r2 = with_ids(store, [A, B, C], [7, 7, 3])                       # same buildings, different group numbers
-    out2, _ = ids.assign_site_ids(r2, pd.DataFrame({"site_group": [7, 3], "n_buildings": [2, 1]}), "d", store, "run2")
+    out2, _ = steps.assign_site_ids(r2, pd.DataFrame({"site_group": [7, 3], "n_buildings": [2, 1]}), "d", store, "run2")
     assert out2.loc[0, "Site ID"] == sid_ab and out2.loc[2, "Site ID"] == sid_c
 
 
 def test_a_new_site_gets_a_new_id_and_vanished_sites_are_retired(store):
     r1 = with_ids(store, [A, B], [1, 2])
-    ids.assign_site_ids(r1, sites_of(1, 1), "d", store, "run1")
+    steps.assign_site_ids(r1, sites_of(1, 1), "d", store, "run1")
     r2 = with_ids(store, [A], [1])
-    out2, _ = ids.assign_site_ids(r2, sites_of(1), "d", store, "run2")
+    out2, _ = steps.assign_site_ids(r2, sites_of(1), "d", store, "run2")
     assert out2.loc[0, "Site ID"] == "SITE-000001"
     reg = store.table_df("site_registry").set_index("site_id")
     assert reg.loc["SITE-000002", "retired_run"] == "run2"
     r3 = with_ids(store, [A, C], [1, 2])
-    out3, _ = ids.assign_site_ids(r3, sites_of(1, 1), "d", store, "run3")
+    out3, _ = steps.assign_site_ids(r3, sites_of(1, 1), "d", store, "run3")
     assert out3.loc[1, "Site ID"] == "SITE-000003"                    # never reuses SITE-000002
 
 

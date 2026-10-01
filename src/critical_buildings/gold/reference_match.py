@@ -19,7 +19,7 @@ from shapely.geometry import Point
 
 from critical_buildings import paths
 from critical_buildings import config
-from critical_buildings.matching.names import name_similarity, strict_similarity
+from critical_buildings.gold.merge import name_similarity, strict_similarity
 from critical_buildings.silver.reference import _norm_pc
 
 

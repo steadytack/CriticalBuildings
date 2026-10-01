@@ -6,7 +6,7 @@ hospital, primary school ...), an operational importance, the site it belongs to
 quality score. Every number can be traced back to its source and to the rules that produced it.
 
 The pilot area is **Suffolk** (about 3,500 buildings in about 1,100 sites). More areas are a config file away
-(see [adding an area](docs/architecture.md#adding-an-area)).
+(see [adding an area](docs/guide.md#adding-an-area-or-a-source)).
 
 ## What you get
 
@@ -50,8 +50,8 @@ flowchart LR
    gives them stable IDs, labels each building's role, and scores data quality.
 4. **Releases** are immutable copies of a run that you share.
 
-The **rules and human decisions** live in a small database (`control/control.db`) with an editor UI, an audit trail and
-numbered versions, not in code. Details: [docs/architecture.md](docs/architecture.md).
+The **rules and human decisions** live in a small database (`governed/control.db`) with an editor UI, an audit trail and
+numbered versions, not in code. Details: [docs/guide.md](docs/guide.md).
 
 ## Quick start
 
@@ -80,7 +80,7 @@ python -m critical_buildings ui         # opens the rules editor in your browser
 
 Edit rules, role settings or the register mapping. The editor checks your edit in plain English, shows what it would
 change, and asks for a reason. *Save* writes to a draft; *Publish* freezes it as a numbered version. The next `run` uses it.
-See [docs/rules.md](docs/rules.md).
+See [the rules guide](docs/guide.md#rules).
 
 **Refresh the data** (engineers): `fetch` then `run`. `fetch` only stores a new snapshot if the data changed.
 
@@ -88,26 +88,26 @@ See [docs/rules.md](docs/rules.md).
 the editor. Decisions are saved against the building and survive reruns.
 
 **Share a version:** `python -m critical_buildings release v2026.10.0 --notes "Suffolk pilot"` copies the run into
-`published/suffolk/v2026.10.0/` (immutable, checksum-verified).
+`data/published/suffolk/v2026.10.0/` (immutable, checksum-verified).
 
 **Tidy up old data:** `python -m critical_buildings archive` shows what could be archived (dry run);
-`archive --apply` does it; `restore` brings something back. Nothing a release depends on is ever touched. See [docs/run-lifecycle.md](docs/run-lifecycle.md).
+`archive --apply` does it; `restore` brings something back. Nothing a release depends on is ever touched. See [the run lifecycle](docs/guide.md#runs-releases-and-archiving).
 
 **Read the rules in Excel:** `python -m critical_buildings export-excel` writes a read-only workbook.
 
 ## What is in this repository
 
 ```
-config/            settings you can tune: pipeline.yml (thresholds), areas/ (one file per area), sources.yml (data sources)
-control/           control.db = the rules store (committed), dumps/ = text copies so rule changes show in git diffs
-src/critical_buildings/   the code: bronze/ silver/ gold/ publish/ (the layers), control/ (rules store), ui/ (editor), cli.py
+settings.yml       settings you can tune: thresholds, areas, data sources (one file)
+governed/          control.db = the rules store (committed), dumps/ = text copies so rule changes show in git diffs
+src/critical_buildings/   the code: sources.py, silver/, gold/, publish.py (the layers), control/ (rules store), ui/ (editor), cli.py
 tests/             automated tests (unit + an end-to-end regression against a golden baseline)
-docs/              architecture, governance, lineage, run lifecycle, rules, decision records
-data/              (not in git)  bronze/ silver/ gold/  - the data layers
-published/         (not in git)  immutable releases to share
-archive/           (not in git)  compressed older data
-legacy/            the original Excel workbooks and one-off migration scripts, kept for provenance
+docs/              guide.md (how it works, rules, runs, lineage, contributing) and governance.md (roles, checks, licences, decisions)
+data/              (not in git)  bronze/ silver/ gold/ published/ archive/
 ```
+
+The original Excel rules workbook and the one-off migration scripts were removed from the working tree; they are in git
+history at commit `d31315c` (`legacy/`).
 
 ## Data sources and licences
 
@@ -131,4 +131,4 @@ UPRN counts and the DESNZ/BUUK columns are reserved but not populated. The full 
 - **Windows shows "fatal exception" lines in a test run:** harmless DLL-loading noise; tests disable that handler.
 - **The UI says nothing is published:** a fresh store needs a first version: `control init --from-excel <workbook>`.
 
-Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributing: [docs/guide.md](docs/guide.md#contributing).

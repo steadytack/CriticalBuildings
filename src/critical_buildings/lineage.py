@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 from critical_buildings import __version__, paths
-from critical_buildings.bronze import manifest
+from critical_buildings import sources
 
 VOLATILE = ["Run Date", "Last Edit Date", "Rule Version", "Run ID"]
 
@@ -20,7 +20,7 @@ def git_info():
     """Commit hash of the code that ran, and whether there were uncommitted changes."""
     try:
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=paths.ROOT, capture_output=True, text=True, timeout=10)
-        dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "config"], cwd=paths.ROOT, capture_output=True,
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "settings.yml"], cwd=paths.ROOT, capture_output=True,
                                text=True, timeout=10)
         if commit.returncode != 0:
             return {"commit": "", "dirty": None}
@@ -30,7 +30,7 @@ def git_info():
 
 
 def sha256_file(path):
-    return manifest.sha256_file(path)
+    return sources.sha256_file(path)
 
 
 def file_entry(path):
@@ -49,7 +49,7 @@ def canonical_hash(csv_path, key="Building ID", drop=VOLATILE):
 def bronze_inputs():
     """The snapshots currently marked LATEST for every source, with file checksums."""
     out = []
-    for m in manifest.all_manifests():
+    for m in sources.all_manifests():
         out.append({"source": m["source"], "area": m.get("area"), "snapshot": m["snapshot"], "retrieved_at": m["retrieved_at"],
                     "licence": m["licence"], "files": [{"name": f["name"], "sha256": f["sha256"], "bytes": f["bytes"]} for f in m["files"]]})
     return out

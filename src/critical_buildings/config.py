@@ -1,4 +1,4 @@
-"""Configuration: area files (config/areas/<area>.yml) and pipeline settings (config/pipeline.yml).
+"""Configuration: everything in settings.yml (thresholds, areas, source catalogue).
 
     from critical_buildings import config
     config.get().merge.point_distance_m        # read a setting
@@ -15,21 +15,25 @@ import yaml
 
 from critical_buildings import paths
 
-SETTINGS_FILE = paths.CONFIG / "pipeline.yml"
+SETTINGS_FILE = paths.SETTINGS
+NON_SECTIONS = ("areas", "sources")     # catalogue data, not tuning thresholds
 
 
 def load_area(name=paths.DEFAULT_AREA):
-    p = paths.CONFIG / "areas" / f"{name}.yml"
-    if not p.exists():
-        known = ", ".join(sorted(f.stem for f in (paths.CONFIG / "areas").glob("*.yml")))
-        raise SystemExit(f"Unknown area '{name}'. Known areas: {known}")
-    return yaml.safe_load(p.read_text(encoding="utf-8"))
+    areas = _raw()["areas"]
+    if name not in areas:
+        raise SystemExit(f"Unknown area '{name}'. Known areas: {', '.join(sorted(areas))}")
+    return {"area": name, **areas[name]}
+
+
+def load_sources():
+    return _raw()["sources"]
 
 
 def _ns(raw):
     """Sections become attribute objects (settings.merge.point_distance_m); values inside a section stay plain
     dicts/lists, so lookup tables such as confidence_points keep working with Series.map."""
-    return SimpleNamespace(**{section: SimpleNamespace(**values) for section, values in raw.items()})
+    return SimpleNamespace(**{section: SimpleNamespace(**values) for section, values in raw.items() if section not in NON_SECTIONS})
 
 
 def _build(raw):
@@ -77,26 +81,26 @@ def use(changes):
 
 def settings_hash():
     """Short content hash of the effective settings (recorded in lineage so a run can be reproduced)."""
-    raw = _raw()
+    raw = {k: v for k, v in _raw().items() if k not in NON_SECTIONS}
     return hashlib.sha256(json.dumps(raw, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
 def validate():
-    """Plain-English problems with config/pipeline.yml (empty list = fine)."""
+    """Plain-English problems with settings.yml (empty list = fine)."""
     problems = []
     try:
         raw = _raw()
         _build(raw)
     except Exception as e:                       # noqa: BLE001 - report any malformed file clearly
-        return [f"config/pipeline.yml could not be read: {e}"]
+        return [f"settings.yml could not be read: {e}"]
     for key, section in (("merge", ["point_distance_m", "overlap_fraction", "name_agree"]),
                          ("sites", ["cluster_gap_m", "attach_m", "merge_overlap"]),
                          ("quality", ["band_high_min", "band_medium_min"])):
         for k in section:
             v = raw.get(key, {}).get(k)
             if not isinstance(v, (int, float)) or v < 0:
-                problems.append(f"config/pipeline.yml: {key}.{k} must be a non-negative number, found {v!r}")
+                problems.append(f"settings.yml: {key}.{k} must be a non-negative number, found {v!r}")
     q = raw.get("quality", {})
     if q.get("band_medium_min", 0) >= q.get("band_high_min", 100):
-        problems.append("config/pipeline.yml: quality.band_medium_min must be lower than quality.band_high_min")
+        problems.append("settings.yml: quality.band_medium_min must be lower than quality.band_high_min")
     return problems

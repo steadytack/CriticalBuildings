@@ -1,5 +1,18 @@
-"""QA outputs: change tracking, summary/review workbook, and the clickable map."""
+"""Publish stage: the delivered files for one run (GeoPackage/CSV outputs, QA workbook and map).
+"""
+import logging
+
+import geopandas as gpd
 import pandas as pd
+
+from critical_buildings import dictionary as docs
+
+log = logging.getLogger(__name__)
+
+
+# ====================================================================================================
+# QA outputs: change tracking, summary/review workbook, and the clickable map
+# ====================================================================================================
 
 CAT_COLOURS = {"Emergency": "#d62728", "Care": "#e377c2", "Education": "#1f77b4", "Transport": "#2ca02c",
                "Government Buildings": "#7f4fb0", "Miscellaneous": "#ff7f0e"}
@@ -124,3 +137,29 @@ def write_map(gdf, path):
               "".join(f"<span style='color:{c}'>&#9675;</span> {k}<br>" for k, c in SRC_COLOURS.items()) + "</div>")
     m.get_root().html.add_child(folium.Element(legend))
     m.save(path)
+
+
+# ====================================================================================================
+# Writing the delivered files
+# ====================================================================================================
+
+# Files every run folder contains (used by release/archive and the regression test)
+DELIVERABLES = ["critical_buildings.gpkg", "critical_buildings.csv", "critical_sites.gpkg", "critical_sites.csv",
+                "critical_buildings_summary.csv", "critical_buildings_data_dictionary.xlsx", "ATTRIBUTION.txt",
+                "run_summary.xlsx", "qa_map.html"]
+
+
+def write_outputs(gold, silver, dest, rule_version, today):
+    df, sites_out = gold.df, gold.sites_out
+    gdf = gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df["Geom"], crs=27700), crs=27700)
+    final = gdf[~gdf.Excluded].drop(columns=["Geom"])   # the layer's own geometry replaces the WKT text column (CSV keeps it)
+    final.to_file(dest / "critical_buildings.gpkg", layer="critical_buildings", driver="GPKG")
+    df[~df.Excluded].to_csv(dest / "critical_buildings.csv", index=False)
+    sites_out.to_file(dest / "critical_sites.gpkg", layer="critical_sites", driver="GPKG")
+    sites_out.drop(columns="geometry").to_csv(dest / "critical_sites.csv", index=False)
+    write_reports(df, gold.changes, rule_version, today, gold.new_ids, silver.os_total, dest, sites_out,
+                     silver.ref, gold.ref_gaps, gold.sites_df)
+    write_map(final, dest / "qa_map.html")
+    docs.write_docs(df[~df.Excluded], sites_out, rule_version, today, gold.changes, dest)
+    log.info("wrote %s buildings in %s sites to %s", len(final), len(sites_out), dest)
+    return len(final), len(sites_out)

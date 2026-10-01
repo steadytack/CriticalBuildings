@@ -8,8 +8,8 @@ import logging
 
 from critical_buildings import config, paths, runs
 from critical_buildings.control.store import ControlStore
-from critical_buildings.gold import build as gold_build
-from critical_buildings.publish import outputs
+from critical_buildings.gold import steps as gold_steps
+from critical_buildings import publish
 from critical_buildings.silver import build as silver_build
 
 log = logging.getLogger(__name__)
@@ -44,8 +44,8 @@ def run(area=paths.DEFAULT_AREA, run_type="dev", notes="", reuse_silver=True, st
     today = dt.date.today()
     try:
         silver, silver_key, reused = silver_build.build_or_load(rules, area, reuse_silver)
-        gold = gold_build.build(silver, rules, store, ctx.run_id, today, previous, area)
-        n_buildings, n_sites = outputs.write_outputs(gold, silver, ctx.dir, rules.label, today)
+        gold = gold_steps.build(silver, rules, store, ctx.run_id, today, previous, area)
+        n_buildings, n_sites = publish.write_outputs(gold, silver, ctx.dir, rules.label, today)
         runs.finish(store, ctx, rules, silver_key, reused, gold)
     except BaseException as exc:
         runs.fail(store, ctx, exc)

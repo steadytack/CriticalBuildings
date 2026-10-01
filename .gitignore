@@ -8,21 +8,14 @@ __pycache__/
 
 # Large / regenerable data (medallion layers) - never committed
 data/
-published/
-archive/
 
 # Local safety copies and working outputs
-legacy/baseline_*/
-outputs/
-legacy/*.bak
 
 # Office lock files, OS junk
 ~$*
 .DS_Store
 Thumbs.db
 
-# Root copy of the rules workbook (locked by Excel at the time of the restructure; the tracked copy is in legacy/)
-/Critical Building Data Product (tidied).xlsx
 
 # Generated read-only views
-control/exports/
+governed/exports/

@@ -1,11 +1,11 @@
 """Retention and archiving across the medallion layers (dry-run by default).
 
-Policy (config/pipeline.yml -> retention):
+Policy (settings.yml -> retention):
     bronze   keep the latest N snapshots per source; older ones are zipped into archive/bronze/
     silver   keep the latest N builds per area; older ones are deleted (reproducible from bronze + rules)
     gold     keep the latest N runs per area; older ones are zipped into archive/gold/ (dev runs are deleted)
 Never touched: LATEST/CURRENT pointers, and anything a release depends on (its run, bronze snapshots, silver build).
-Releases in published/ are kept forever.
+Releases in data/published/ are kept forever.
 """
 import datetime as dt
 import json

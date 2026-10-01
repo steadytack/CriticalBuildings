@@ -4,7 +4,8 @@ import pandas as pd
 import pytest
 from shapely.geometry import box
 
-from critical_buildings.gold import quality, roles, sites
+from critical_buildings.gold import steps
+from critical_buildings.gold import roles, sites
 from helpers import point, square
 
 EDU = dict(category="Education", building_type="Primary School", importance="Medium")
@@ -149,13 +150,13 @@ def test_quality_score_components_add_up():
         ("Authoritative only", "CQC", "High", POLY, ""),               # 40 + 20 (register) + 20 + 15
         ("Closed per register", "OS Important Buildings", "Low", "POINT (1 1)", ""),   # 0 + 12 + 5 + 5
     ])
-    assert list(quality.quality_score(df)) == [100, 29, 95, 22]
+    assert list(steps.quality_score(df)) == [100, 29, 95, 22]
 
 
 @pytest.mark.parametrize("score,band", [(100, "High"), (75, "High"), (74, "Medium"), (50, "Medium"), (49, "Low"), (0, "Low")])
 def test_quality_bands(score, band):
-    assert quality.quality_band(pd.Series([score])).iloc[0] == band
+    assert steps.quality_band(pd.Series([score])).iloc[0] == band
 
 
 def test_quality_label_describes_the_bands():
-    assert quality.bands_label() == "High 75-100, Medium 50-74, Low 0-49"
+    assert steps.bands_label() == "High 75-100, Medium 50-74, Low 0-49"

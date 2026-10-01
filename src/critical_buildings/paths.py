@@ -1,11 +1,12 @@
 """Every location in the repository, in one place.
 
-Medallion layout (all under data/, git-ignored):
+Everything generated lives under data/ (git-ignored):
     data/bronze/<source>/<retrieved_date>/   raw files exactly as downloaded + _manifest.json
     data/bronze/<source>/LATEST.json         pointer to the snapshot runs use by default
     data/silver/<area>/conformed/<key>/      cleaned tables derived from bronze (key = hash of the bronze inputs)
     data/gold/<area>/<run_id>/               one immutable folder per pipeline run
-Human-governed inputs live in config/, control/ and rules; deliverables in published/.
+    data/published/<area>/<release>/         pinned releases;  data/archive/  zipped old runs and snapshots
+Human-governed inputs: settings.yml and governed/ (rules store, text dumps).
 """
 import hashlib
 import json
@@ -13,16 +14,14 @@ import os
 from pathlib import Path
 
 ROOT = Path(os.environ.get("CB_ROOT") or Path(__file__).resolve().parents[2])
-CONFIG = ROOT / "config"
-CONTROL = ROOT / "control"
+SETTINGS = ROOT / "settings.yml"
+CONTROL = ROOT / "governed"
 DATA = ROOT / "data"
 BRONZE = DATA / "bronze"
 SILVER = DATA / "silver"
 GOLD = DATA / "gold"
-PUBLISHED = ROOT / "published"
-ARCHIVE = ROOT / "archive"
-LEGACY = ROOT / "legacy"
-OUTPUTS = ROOT / "outputs"          # transitional: working outputs until the run lifecycle (phase 4) replaces it
+PUBLISHED = DATA / "published"
+ARCHIVE = DATA / "archive"
 DEFAULT_AREA = "suffolk"
 
 OS_TILE_ZIP = "opmplc_essh_{tile}.zip"
