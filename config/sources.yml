@@ -1,0 +1,74 @@
+# Source catalogue: every external dataset the pipeline uses.
+# The licence and attribution here are copied into each bronze manifest and into the published ATTRIBUTION.txt.
+# To add a source: add an entry here, add a fetcher in src/critical_buildings/bronze/, and a silver reader.
+
+osm_overpass:
+  name: OpenStreetMap (Overpass API)
+  kind: api
+  area_scoped: true            # one snapshot series per area: osm_overpass__<area>
+  url: https://overpass-api.de/api/interpreter
+  licence: Open Database Licence (ODbL) 1.0
+  attribution: "(c) OpenStreetMap contributors"
+  uses: Tagged features (amenities, healthcare, emergency ...) and buildings inside port/military/aerodrome areas
+  refresh: monthly
+  owner: data engineering
+
+os_open_map_local:
+  name: OS Open Map Local
+  kind: download
+  url: "https://api.os.uk/downloads/v1/products/OpenMapLocal/downloads?area={tile}&format=ESRI%C2%AE+Shapefile&redirect"
+  licence: Open Government Licence v3.0
+  attribution: Contains OS data (c) Crown copyright and database right 2026
+  uses: ImportantBuilding, FunctionalSite, RailwayStation and Building layers by 100 km grid square
+  refresh: six-monthly (OS release cycle)
+  owner: data engineering
+
+os_codepoint_open:
+  name: OS Code-Point Open
+  kind: download
+  url: "https://api.os.uk/downloads/v1/products/CodePointOpen/downloads?area=GB&format=CSV&redirect"
+  licence: Open Government Licence v3.0
+  attribution: >-
+    Contains OS data (c) Crown copyright and database right 2026; contains Royal Mail data (c) Royal Mail copyright
+    and database right 2026; contains National Statistics data (c) Crown copyright and database right 2026
+  uses: Postcode to coordinates (NHS ODS sites; register location checks)
+  refresh: quarterly
+  owner: data engineering
+
+dfe_gias:
+  name: DfE Get Information About Schools
+  kind: download
+  url: "https://ea-edubase-api-prod.azurewebsites.net/edubase/downloads/public/edubasealldata{yyyymmdd}.csv"
+  licence: Open Government Licence v3.0
+  attribution: >-
+    Contains public sector information licensed under the Open Government Licence v3.0.
+    Source: Department for Education
+  uses: Open schools, phase, pupil numbers, location
+  refresh: monthly
+  owner: data steward
+
+cqc_hsca:
+  name: CQC HSCA active locations
+  kind: download
+  page: https://www.cqc.org.uk/about-us/transparency/using-cqc-data      # the file link changes every month
+  link_pattern: "HSCA_Active_Locations\\.ods"
+  licence: Open Government Licence v3.0
+  attribution: >-
+    Contains public sector information licensed under the Open Government Licence v3.0.
+    Source: Care Quality Commission
+  uses: Care homes, hospices, hospitals, GPs, clinics - beds, rating, UPRN, location
+  refresh: monthly
+  owner: data steward
+
+nhs_ods:
+  name: NHS Organisation Data Service
+  kind: download
+  url: "https://www.odsdatasearchandexport.nhs.uk/api/getReport?report={report}"
+  reports: [ets, etr, epraccur]
+  licence: Open Government Licence v3.0
+  attribution: >-
+    Contains public sector information licensed under the Open Government Licence v3.0.
+    Source: NHS England Organisation Data Service
+  uses: Trust sites, trusts and GP practices - ODS codes, status, parent trust
+  refresh: monthly
+  owner: data steward

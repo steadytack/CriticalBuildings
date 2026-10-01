@@ -17,9 +17,9 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
 
-from ref_data import _norm_pc
+from critical_buildings import paths
+from critical_buildings.silver.reference import _norm_pc
 
-DATA = Path(__file__).resolve().parent.parent / "data"
 LOOSE_CATEGORIES = {"Education"}            # any building type in these categories may match each other
 # Other building types that may match each other (different sources name them differently), listed both ways.
 COMPATIBLE_PAIRS = {frozenset(p) for p in [
@@ -148,12 +148,11 @@ def explain_unverified(site, ref_all, ref_valid, categories):
 
 def building_footprints(boundary):
     """OS Open Map Local Building polygons for the area (cached, used to give authoritative points a footprint)."""
-    import glob
-    cache = DATA / "os_buildings_suffolk.gpkg"
+    cache = paths.silver_conformed_dir() / "os_buildings.gpkg"
     if cache.exists():
         return gpd.read_file(cache)
     frames = []
-    for f in glob.glob(str(DATA / "opmplc_t*" / "*" / "data" / "T?_Building.shp")):
+    for f in paths.os_layer_paths("Building"):
         g = gpd.read_file(f, columns=["ID"], bbox=tuple(boundary.bounds))
         frames.append(g)
     b = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs=27700)

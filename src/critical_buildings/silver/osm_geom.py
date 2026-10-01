@@ -6,7 +6,7 @@ import geopandas as gpd
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 from shapely.ops import polygonize, unary_union
 
-DATA = Path(__file__).resolve().parent.parent / "data"
+from critical_buildings import paths
 
 
 def _line(geom):
@@ -52,15 +52,7 @@ def load_elements(path):
     return gpd.GeoDataFrame(rows, geometry="geometry", crs=4326).to_crs(27700)
 
 
-def suffolk_boundary():
-    """Suffolk boundary polygon (EPSG:27700), fetched once from Overpass and cached."""
-    cache = DATA / "suffolk_boundary.json"
-    if not cache.exists():
-        import requests
-        q = ('[out:json][timeout:120];rel["ref:gss"="E10000029"][boundary=administrative][admin_level=6];out geom;')
-        r = requests.post("https://overpass-api.de/api/interpreter", data={"data": q}, timeout=200,
-                          headers={"User-Agent": "critical-buildings-pipeline/0.1"})
-        r.raise_for_status()
-        cache.write_text(r.text, encoding="utf-8")
-    g = load_elements(cache)
+def area_boundary(area=paths.DEFAULT_AREA):
+    """Boundary polygon of the area (EPSG:27700), from the bronze OSM boundary snapshot."""
+    g = load_elements(paths.bronze_file("osm_overpass", "area_boundary.json", area=area))
     return unary_union(g.geometry.buffer(0).values)

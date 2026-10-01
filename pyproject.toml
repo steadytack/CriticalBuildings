@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "critical-buildings"
+version = "0.1.0"
+description = "Combines OpenStreetMap, OS Open Map Local and authoritative registers (DfE, CQC, NHS ODS) into a critical buildings dataset."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=3.0",
+    "numpy>=2.0",
+    "geopandas>=1.0",
+    "pyogrio>=0.10",
+    "shapely>=2.0",
+    "pyproj>=3.6",
+    "pyarrow>=15",
+    "openpyxl>=3.1",
+    "odfpy>=1.4",
+    "requests>=2.31",
+    "folium>=0.17",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+ui = ["streamlit>=1.40"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+critical-buildings = "critical_buildings.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

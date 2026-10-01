@@ -1,0 +1,11 @@
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.sql text eol=lf
+
+# Binary stores: never diffed or merged as text. Review rule changes in control/dumps/*.csv instead.
+*.db binary
+*.gpkg binary
+*.xlsx binary
+*.parquet binary

@@ -11,19 +11,17 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-import classify
-import merge
-import osm_geom
-import docs
-import qa
-import ref_data
-import refmatch
-import roles
-import sites as sitelib
-import rules_io
+from critical_buildings import paths, rules_io
+from critical_buildings.gold import merge, roles
+from critical_buildings.gold import reference_match as refmatch
+from critical_buildings.gold import sites as sitelib
+from critical_buildings.publish import dictionary as docs
+from critical_buildings.publish import qa_report as qa
+from critical_buildings.silver import classify, osm_geom
+from critical_buildings.silver import reference as ref_data
 
-ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "outputs"
+ROOT = paths.ROOT
+OUT = paths.OUTPUTS
 OUT.mkdir(exist_ok=True)
 REGISTRY = OUT / "id_registry.csv"
 OVERRIDES = OUT / "overrides.csv"
@@ -176,7 +174,7 @@ def main():
     recs = merge.merge(osm, os_)
     recs, sites_df = sitelib.assign_sites(recs, site_cands)
     print("matching authoritative sources (DfE / CQC / NHS ODS) ...")
-    boundary = osm_geom.suffolk_boundary()
+    boundary = osm_geom.area_boundary()
     ref_all = ref_data.load_reference(boundary, keep_ignored=True)
     ref = ref_all[~ref_all.building_type.isin(["IGNORE", "UNMAPPED"])].copy()
     recs, sites_df, ref_gaps, ref_matches = refmatch.attach_reference(recs, sites_df, ref, tags, boundary, ref_all, ref_data.postcode_points())
@@ -277,7 +275,7 @@ def main():
     sites_out.drop(columns="geometry").to_csv(OUT / "critical_sites.csv", index=False)
     qa.write_reports(df, changes, version, today, new_ids, os_total, OUT, sites_out, ref, ref_gaps, sites_df)
     qa.write_map(final, OUT / "qa_map.html")
-    docs.write_docs(df[~df.Excluded], sites_out, version, today, changes, OUT, ROOT)
+    docs.write_docs(df[~df.Excluded], sites_out, version, today, changes, OUT)
     print(f"done: {len(final)} buildings in {len(sites_out)} sites ({new_ids} new building IDs) -> outputs/")
 
 

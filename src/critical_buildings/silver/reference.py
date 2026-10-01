@@ -5,16 +5,15 @@ are dropped. Output columns: ref_source, ref_id, ref_name, building_type, status
 rating, provider, postcode, uprn, ods_code, ods_status, ods_parent, geometry (EPSG:27700).
 """
 import functools
-import glob
-from pathlib import Path
+import zipfile
 
 import geopandas as gpd
 import pandas as pd
 
-import osm_geom
-from rules_io import load_reference_mapping
+from critical_buildings import paths
+from critical_buildings.rules_io import load_reference_mapping
+from critical_buildings.silver import osm_geom
 
-DATA = Path(__file__).resolve().parent.parent / "data"
 COLS = ["ref_source", "ref_id", "ref_name", "building_type", "status", "capacity", "capacity_unit", "detail",
         "rating", "provider", "postcode", "uprn", "ods_code", "ods_status", "ods_parent", "geometry"]
 
@@ -40,28 +39,39 @@ def _norm_pc(x):
 @functools.lru_cache(maxsize=1)
 def postcode_points():
     """Postcode -> (easting, northing) from OS Code-Point Open."""
-    hdr = pd.read_csv(DATA / "codepo" / "Doc" / "Code-Point_Open_Column_Headers.csv", header=None)
-    cols = hdr.iloc[0].tolist()
-    frames = [pd.read_csv(f, header=None, names=cols)
-              for f in glob.glob(str(DATA / "codepo" / "Data" / "CSV" / "*.csv"))]
+    with zipfile.ZipFile(paths.bronze_file("os_codepoint_open", "codepo_gb.zip")) as z:
+        cols = pd.read_csv(z.open("Doc/Code-Point_Open_Column_Headers.csv"), header=None).iloc[0].tolist()
+        frames = [pd.read_csv(z.open(n), header=None, names=cols)
+                  for n in z.namelist() if n.startswith("Data/CSV/") and n.endswith(".csv")]
     cp = pd.concat(frames)
     return dict(zip(cp["PC"].map(_norm_pc), zip(cp["EA"], cp["NO"])))   # PC = postcode, EA/NO = easting/northing
 
 
 def _ods():
     """ODS lookups: code -> dict(name, postcode, status, parent, kind) from ets, epraccur and etr."""
-    etr = pd.read_csv(DATA / "ods_etr.csv", header=None, dtype=str).fillna("")
+    etr = pd.read_csv(paths.bronze_file("nhs_ods", "etr.csv"), header=None, dtype=str).fillna("")
     trust = dict(zip(etr[0], etr[1]))
     out = {}
-    ets = pd.read_csv(DATA / "ods_ets.csv", header=None, dtype=str).fillna("")
+    ets = pd.read_csv(paths.bronze_file("nhs_ods", "ets.csv"), header=None, dtype=str).fillna("")
     for r in ets.itertuples(index=False):
         out[r[0]] = dict(name=r[1], postcode=r[9], status="Closed" if r[11] else "Active",
                          parent=trust.get(r[14], r[14]), kind="ets")
-    gp = pd.read_csv(DATA / "ods_epraccur.csv", header=None, dtype=str).fillna("")
+    gp = pd.read_csv(paths.bronze_file("nhs_ods", "epraccur.csv"), header=None, dtype=str).fillna("")
     for r in gp.itertuples(index=False):
         out.setdefault(r[0], dict(name=r[1], postcode=r[9], status="Active" if r[12] == "ACTIVE" else "Closed",
                                   parent=r[14], kind="epraccur"))
     return out
+
+
+def _cqc_locations():
+    """CQC active locations as a conformed silver table (parquet), built once per bronze snapshot."""
+    cache = paths.silver_conformed_dir() / "cqc_locations.parquet"
+    if cache.exists():
+        return pd.read_parquet(cache)
+    c = pd.read_excel(paths.bronze_file("cqc_hsca", "active_locations.ods"), engine="odf",
+                      sheet_name="HSCA_Active_Locations")
+    c.to_parquet(cache)
+    return c
 
 
 def load_reference(boundary, keep_ignored=False):
@@ -73,7 +83,7 @@ def load_reference(boundary, keep_ignored=False):
     rows, dropped = [], {"unmapped": 0, "ignored": 0}
 
     # ---- DfE GIAS ----
-    g = pd.read_csv(DATA / "gias_edubasealldata.csv", encoding="cp1252", low_memory=False).dropna(
+    g = pd.read_csv(paths.bronze_file("dfe_gias", "edubasealldata.csv"), encoding="cp1252", low_memory=False).dropna(
         subset=["Easting", "Northing"])
     g = g[gpd.GeoSeries(gpd.points_from_xy(g.Easting, g.Northing), crs=27700, index=g.index).within(boundary)]
     for _, r in g.iterrows():
@@ -94,12 +104,7 @@ def load_reference(boundary, keep_ignored=False):
                          geometry=gpd.points_from_xy([r.Easting], [r.Northing])[0]))
 
     # ---- CQC (HSCA active locations) ----
-    pkl, src = DATA / "cqc_hsca.pkl", DATA / "cqc_active_locations.ods"
-    if pkl.exists() and pkl.stat().st_mtime >= src.stat().st_mtime:
-        c = pd.read_pickle(pkl)
-    else:
-        c = pd.read_excel(src, engine="odf", sheet_name="HSCA_Active_Locations")
-        c.to_pickle(pkl)
+    c = _cqc_locations()
     c = c.dropna(subset=["Location Latitude", "Location Longitude"])
     cg = gpd.GeoSeries(gpd.points_from_xy(c["Location Longitude"], c["Location Latitude"]), crs=4326,
                        index=c.index).to_crs(27700)
@@ -155,6 +160,6 @@ def load_reference(boundary, keep_ignored=False):
 
 
 if __name__ == "__main__":
-    ref = load_reference(osm_geom.suffolk_boundary())
+    ref = load_reference(osm_geom.area_boundary())
     print(len(ref), ref.attrs["dropped"])
     print(ref.groupby(["ref_source", "building_type"]).size().to_string())

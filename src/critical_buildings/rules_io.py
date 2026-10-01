@@ -11,8 +11,11 @@ from pathlib import Path
 
 import openpyxl
 
-ROOT = Path(__file__).resolve().parent.parent
-RULES_FILE = ROOT / "Critical Building Data Product (tidied).xlsx"
+from critical_buildings.paths import ROOT
+
+# OSM tags that describe an area (not a building): buildings inside them inherit the area's rule
+AREA_TAGS = {("landuse", "port"), ("landuse", "military"), ("aeroway", "aerodrome")}
+RULES_FILE = ROOT / "legacy" / "rules_workbook_tidied_2026-10-01.xlsx"   # transitional: replaced by control.db in phase 2
 
 COLUMNS = ["Rule Ref", "Active (Y/N)", "Priority", "Primary Category", "Building Type",
            "Operational Importance", "Operational Importance Driver", "Source", "Tag", "Notes"]

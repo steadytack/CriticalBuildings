@@ -9,7 +9,7 @@ several OS building polygons.
 import geopandas as gpd
 import pandas as pd
 
-from refmatch import name_similarity
+from critical_buildings.gold.reference_match import name_similarity
 
 POINT_DISTANCE_M = 25
 OVERLAP_FRACTION = 0.3

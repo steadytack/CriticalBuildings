@@ -10,9 +10,10 @@ import numpy as np
 import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
-import merge
-import refmatch
-import sites as sitelib
+from critical_buildings.bronze import manifest
+from critical_buildings.gold import merge
+from critical_buildings.gold import reference_match as refmatch
+from critical_buildings.gold import sites as sitelib
 
 # ------------------------------------------------------------------ data quality score
 VERIFICATION_POINTS = {"Verified": 40, "Verified (manual)": 40, "Authoritative only": 40, "Not covered": 20,
@@ -132,21 +133,6 @@ SITE_ONLY = {
     "Created Date": ("Audit", "Date the site first appeared.", "2026-10-01"),
 }
 
-SOURCES = [
-    ("OpenStreetMap", "Tagged features (amenities, healthcare, emergency, etc.) via the Overpass API",
-     "Open Database Licence (ODbL) 1.0", "(c) OpenStreetMap contributors", "osm_features.json; osm_area_buildings.json; suffolk_boundary.json"),
-    ("OS Open Map Local", "ImportantBuilding, FunctionalSite, RailwayStation and Building layers (GB grid squares TL, TM, TG)",
-     "Open Government Licence v3.0", "Contains OS data (c) Crown copyright and database right 2026", "opmplc_essh_tl.zip; opmplc_essh_tm.zip; opmplc_essh_tg.zip"),
-    ("OS Code-Point Open", "Postcode to coordinates (NHS ODS sites)", "Open Government Licence v3.0",
-     "Contains OS data (c) Crown copyright and database right 2026; contains Royal Mail data (c) Royal Mail copyright and database right 2026; contains National Statistics data (c) Crown copyright and database right 2026",
-     "codepo_gb.zip"),
-    ("DfE Get Information About Schools", "Open schools, phase, pupil numbers, location", "Open Government Licence v3.0",
-     "Contains public sector information licensed under the Open Government Licence v3.0. Source: Department for Education", "gias_edubasealldata.csv"),
-    ("CQC HSCA active locations", "Care homes, hospices, hospitals, GPs, clinics: beds, rating, UPRN, location", "Open Government Licence v3.0",
-     "Contains public sector information licensed under the Open Government Licence v3.0. Source: Care Quality Commission", "cqc_active_locations.ods"),
-    ("NHS Organisation Data Service", "Trust sites, trusts and GP practices: ODS codes, status, parent trust", "Open Government Licence v3.0",
-     "Contains public sector information licensed under the Open Government Licence v3.0. Source: NHS England Organisation Data Service", "ods_ets.csv; ods_etr.csv; ods_epraccur.csv"),
-]
 
 LIMITATIONS = [
     "Pilot area only: Suffolk. Counts and coverage will differ elsewhere.",
@@ -172,20 +158,21 @@ def _check_complete(df, sites):
         raise SystemExit("Data dictionary is missing descriptions for: " + ", ".join(sorted(set(missing))))
 
 
-def _source_dates(root):
+def _source_dates():
+    """One row per source: catalogue text + the manifest of the snapshot in use (what we used, when, how big)."""
+    catalogue = manifest.load_sources()
+    snaps = {m["source"]: m for m in manifest.all_manifests()}
     out = []
-    for name, use, lic, attr, files in SOURCES:
-        dates, size = [], 0
-        for f in [x.strip() for x in files.split(";")]:
-            p = Path(root) / "data" / f
-            if p.exists():
-                dates.append(dt.date.fromtimestamp(p.stat().st_mtime))
-                size += p.stat().st_size
-        out.append((name, use, lic, attr, files, str(max(dates)) if dates else "", round(size / 1e6, 1)))
+    for key, cat in catalogue.items():
+        m = snaps.get(key)
+        files = "; ".join(f["name"] for f in m["files"]) if m else ""
+        size = round(sum(f["bytes"] for f in m["files"]) / 1e6, 1) if m else 0
+        out.append((cat["name"], cat["uses"], cat["licence"], " ".join(str(cat["attribution"]).split()), files,
+                    m["retrieved_at"][:10] if m else "", size))
     return out
 
 
-def write_docs(df, sites, version, today, changes, out, root):
+def write_docs(df, sites, version, today, changes, out):
     _check_complete(df, sites)
     df = df.copy()
 
@@ -196,7 +183,7 @@ def write_docs(df, sites, version, today, changes, out, root):
     df[slim_cols].to_csv(out / "critical_buildings_summary.csv", index=False)
 
     # ---- attribution ----
-    src = _source_dates(root)
+    src = _source_dates()
     lines = ["ATTRIBUTION AND LICENCES", "",
              "This dataset combines the sources below. Include the attribution lines when you share or publish it.", ""]
     for name, use, lic, attr, files, date, size in src:

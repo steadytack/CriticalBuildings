@@ -9,11 +9,10 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-import osm_geom
-from fetch_osm import AREA_TAGS
-from rules_io import load_rules
+from critical_buildings import paths
+from critical_buildings.rules_io import AREA_TAGS, load_rules
+from critical_buildings.silver import osm_geom
 
-DATA = Path(__file__).resolve().parent.parent / "data"
 IMP_RANK = {"High": 0, "Medium": 1, "Low": 2}
 COLS = ["source", "source_id", "name", "rule_ref", "category", "building_type", "importance", "driver",
         "matched_refs", "note", "rule_notes", "osm_building", "geometry"]
@@ -41,7 +40,7 @@ def _row(source, sid, name, rule, refs, geom, note="", osm_building=""):
 
 def classify_osm(tags, boundary=None):
     osm_rules = [t for t in tags if t.source == "OSM"]
-    feats = osm_geom.load_elements(DATA / "osm_features.json")
+    feats = osm_geom.load_elements(paths.bronze_file("osm_overpass", "osm_features.json", area=paths.DEFAULT_AREA))
     rows, areas, sites = [], [], []
     for _, f in feats.iterrows():
         hits = [r for r in osm_rules if _osm_match(f.tags, r)]
@@ -61,7 +60,7 @@ def classify_osm(tags, boundary=None):
 
     # area-type features (port, military land, aerodrome): classify the buildings inside them
     own_ids = {r["source_id"] for r in rows}
-    blds = osm_geom.load_elements(DATA / "osm_area_buildings.json")
+    blds = osm_geom.load_elements(paths.bronze_file("osm_overpass", "osm_area_buildings.json", area=paths.DEFAULT_AREA))
     blds = blds[~blds.osm_id.isin(own_ids)]
     pts = blds.geometry.representative_point()
     inherited = {}
@@ -107,8 +106,7 @@ def load_os_sites(tags, boundary):
 
 
 def _read_layer(layer, boundary):
-    files = glob.glob(str(DATA / "opmplc_t*" / "*" / "data" / f"T?_{layer}.shp"))
-    g = pd.concat([gpd.read_file(f) for f in files], ignore_index=True)
+    g = pd.concat([gpd.read_file(f) for f in paths.os_layer_paths(layer)], ignore_index=True)
     g = gpd.GeoDataFrame(g, geometry=gpd.GeoSeries(g.geometry, crs=27700).force_2d(), crs=27700)
     return g[g.geometry.representative_point().within(boundary)]
 
@@ -130,7 +128,7 @@ def classify_os(tags, boundary):
 
 def run(boundary=None):
     tags, _ = load_rules()
-    boundary = boundary if boundary is not None else osm_geom.suffolk_boundary()
+    boundary = boundary if boundary is not None else osm_geom.area_boundary()
     osm, osm_sites = classify_osm(tags, boundary)
     os_, os_total = classify_os(tags, boundary)
     os_sites = load_os_sites(tags, boundary)
