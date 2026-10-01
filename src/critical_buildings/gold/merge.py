@@ -1,56 +1,54 @@
 """Merge classified OSM and OS features into one record per building.
 
 Match rule (config below): an OS building polygon and an OSM feature are the same building when they have the
-same Primary Category (and, outside Education, the same Building Type) and either overlap (OSM polygon covers >= OVERLAP_FRACTION of the OS polygon or contains its
-centre, or the OSM point lies inside it) or are within POINT_DISTANCE_M of each other (lower confidence).
+same Primary Category (and, outside Education, the same Building Type) and either overlap (OSM polygon covers >= _c().overlap_fraction of the OS polygon or contains its
+centre, or the OSM point lies inside it) or are within _c().point_distance_m of each other (lower confidence).
 An OSM point is matched to only its single nearest OS polygon; an OSM polygon (e.g. a school site) can match
 several OS building polygons.
 """
 import geopandas as gpd
 import pandas as pd
 
-from critical_buildings.gold.reference_match import name_similarity
+from critical_buildings import config
+from critical_buildings.matching.names import name_similarity
 
-POINT_DISTANCE_M = 25
-OVERLAP_FRACTION = 0.3
-NAME_AGREE = 0.6          # OS and OSM names this similar make a proximity match trustworthy
 IMP_RANK = {"High": 0, "Medium": 1, "Low": 2}
-# Categories where OS and OSM name the sub-types differently (e.g. 'Primary Education' vs school=primary), so a
-# match only needs the same category. In every other category the building type must also agree.
-LOOSE_CATEGORIES = {"Education"}
-# Some building types are large or sparsely mapped, so allow a wider proximity match.
-POINT_DISTANCE_BY_TYPE = {"Railway Station": 100}
-PRIO = None   # filled by run.py: {rule_ref: priority}, used to choose between the two sources' rules
 
 
-def _pair_method(os_geom, osm_geom, max_d=POINT_DISTANCE_M):
+def _c():
+    return config.get().merge
+
+
+def _pair_method(os_geom, osm_geom, max_d=None):
     """Return (method, distance) or None."""
+    max_d = _c().point_distance_m if max_d is None else max_d
     d = os_geom.distance(osm_geom)
     if d > max_d:
         return None
     if osm_geom.geom_type in ("Polygon", "MultiPolygon"):
         inter = os_geom.intersection(osm_geom).area
-        if os_geom.representative_point().within(osm_geom) or inter / max(os_geom.area, 1e-9) >= OVERLAP_FRACTION:
+        if os_geom.representative_point().within(osm_geom) or inter / max(os_geom.area, 1e-9) >= _c().overlap_fraction:
             return "overlap", d
         return "proximity", d
     return ("overlap", d) if d == 0 else ("proximity", d)
 
 
-def merge(osm, os_):
+def merge(osm, os_, prio):
+    """prio: {rule_ref: priority} used to choose between the OS rule and the OSM rule when both match."""
     osm = osm.reset_index(drop=True)
     os_ = os_.reset_index(drop=True)
-    cand = gpd.sjoin(os_[["geometry"]], osm[["geometry"]], predicate="dwithin", distance=max(POINT_DISTANCE_BY_TYPE.values(), default=POINT_DISTANCE_M))
+    cand = gpd.sjoin(os_[["geometry"]], osm[["geometry"]], predicate="dwithin", distance=max(_c().point_distance_by_type.values(), default=_c().point_distance_m))
     pairs = []
     for os_i, row in cand.iterrows():
         o = int(row["index_right"])
         if os_.at[os_i, "category"] != osm.at[o, "category"]:
             continue
-        if (os_.at[os_i, "category"] not in LOOSE_CATEGORIES
+        if (os_.at[os_i, "category"] not in config.get().matching.loose_categories
                 and os_.at[os_i, "building_type"] != osm.at[o, "building_type"]):
             continue
         # a building 'next to' another is only the same building if the types agree; different types must overlap
         m = _pair_method(os_.at[os_i, "geometry"], osm.at[o, "geometry"],
-                         POINT_DISTANCE_BY_TYPE.get(os_.at[os_i, "building_type"], POINT_DISTANCE_M))
+                         _c().point_distance_by_type.get(os_.at[os_i, "building_type"], _c().point_distance_m))
         if m and m[0] == "proximity" and os_.at[os_i, "building_type"] != osm.at[o, "building_type"]:
             m = None
         if m:
@@ -78,8 +76,8 @@ def merge(osm, os_):
 
     def winner(a, b):
         """Choose which source's rule wins: lowest Priority, then importance, then the OS rule."""
-        ka = (PRIO.get(a.rule_ref, 50), IMP_RANK[a.importance])
-        kb = (PRIO.get(b.rule_ref, 50), IMP_RANK[b.importance])
+        ka = (prio.get(a.rule_ref, 50), IMP_RANK[a.importance])
+        kb = (prio.get(b.rule_ref, 50), IMP_RANK[b.importance])
         return b if kb < ka else a
 
     for i, r in os_.iterrows():
@@ -92,8 +90,8 @@ def merge(osm, os_):
         o = osm.loc[m["osm"]]
         w = winner(r, o)
         reasons = []
-        expected_prox = m["method"] == "proximity" and r.building_type in POINT_DISTANCE_BY_TYPE
-        names_agree = name_similarity(r["name"], o["name"]) >= NAME_AGREE if (r["name"] and o["name"]) else False
+        expected_prox = m["method"] == "proximity" and r.building_type in _c().point_distance_by_type
+        names_agree = name_similarity(r["name"], o["name"]) >= _c().name_agree if (r["name"] and o["name"]) else False
         if m["method"] == "proximity" and not expected_prox and not names_agree:
             reasons.append("Proximity-only match (close by, no overlap, names differ or missing)")
         if m["ncand"] > 1:

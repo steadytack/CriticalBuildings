@@ -11,7 +11,6 @@ import geopandas as gpd
 import pandas as pd
 
 from critical_buildings import paths
-from critical_buildings.rules_io import load_reference_mapping
 from critical_buildings.silver import osm_geom
 
 COLS = ["ref_source", "ref_id", "ref_name", "building_type", "status", "capacity", "capacity_unit", "detail",
@@ -63,9 +62,9 @@ def _ods():
     return out
 
 
-def _cqc_locations():
+def _cqc_locations(area=paths.DEFAULT_AREA):
     """CQC active locations as a conformed silver table (parquet), built once per bronze snapshot."""
-    cache = paths.silver_conformed_dir() / "cqc_locations.parquet"
+    cache = paths.silver_conformed_dir(area) / "cqc_locations.parquet"
     if cache.exists():
         return pd.read_parquet(cache)
     c = pd.read_excel(paths.bronze_file("cqc_hsca", "active_locations.ods"), engine="odf",
@@ -74,11 +73,8 @@ def _cqc_locations():
     return c
 
 
-def load_reference(boundary, keep_ignored=False):
+def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_AREA):
     """keep_ignored=True also returns IGNORE/unmapped records (building_type 'IGNORE' / 'UNMAPPED') for diagnostics."""
-    mapping, errors = load_reference_mapping()
-    if errors:
-        raise SystemExit("Reference mapping check FAILED:\n  " + "\n  ".join(errors))
     ods = _ods()
     rows, dropped = [], {"unmapped": 0, "ignored": 0}
 
@@ -104,7 +100,7 @@ def load_reference(boundary, keep_ignored=False):
                          geometry=gpd.points_from_xy([r.Easting], [r.Northing])[0]))
 
     # ---- CQC (HSCA active locations) ----
-    c = _cqc_locations()
+    c = _cqc_locations(area)
     c = c.dropna(subset=["Location Latitude", "Location Longitude"])
     cg = gpd.GeoSeries(gpd.points_from_xy(c["Location Longitude"], c["Location Latitude"]), crs=4326,
                        index=c.index).to_crs(27700)
@@ -157,9 +153,3 @@ def load_reference(boundary, keep_ignored=False):
     out = out[~((out.ref_source == "NHS ODS") & key.duplicated(keep="first"))].copy()
     out.attrs["dropped"] = dropped
     return out
-
-
-if __name__ == "__main__":
-    ref = load_reference(osm_geom.area_boundary())
-    print(len(ref), ref.attrs["dropped"])
-    print(ref.groupby(["ref_source", "building_type"]).size().to_string())

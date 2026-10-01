@@ -8,7 +8,7 @@ import logging
 
 from critical_buildings import config
 from critical_buildings.bronze import download
-from critical_buildings.rules_io import AREA_TAGS, load_rules
+from critical_buildings.control.ruleset import AREA_TAGS
 
 log = logging.getLogger(__name__)
 OVERPASS = "https://overpass-api.de/api/interpreter"
@@ -34,10 +34,10 @@ def build_queries(area_cfg, osm_tags):
     return {"osm_features.json": features, "osm_area_buildings.json": area_buildings, "area_boundary.json": boundary}
 
 
-def fetch(area="suffolk", dry_run=False):
+def fetch(rules, area="suffolk", dry_run=False):
+    """rules: the published RuleSet whose active OSM tags decide what is fetched."""
     area_cfg = config.load_area(area)
-    tags, _ = load_rules()
-    osm_tags = sorted({(t.key, t.value) for t in tags if t.source == "OSM"})
+    osm_tags = sorted({(t.key, t.value) for t in rules.tags if t.source == "OSM"})
     queries = build_queries(area_cfg, osm_tags)
     specs = [{"name": name, "url": OVERPASS, "post_data": {"data": q}} for name, q in queries.items()]
     return download.snapshot("osm_overpass", specs, area=area, dry_run=dry_run,

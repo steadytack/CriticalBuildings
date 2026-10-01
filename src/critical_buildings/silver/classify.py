@@ -9,8 +9,8 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-from critical_buildings import paths
-from critical_buildings.rules_io import AREA_TAGS, load_rules
+from critical_buildings import config, paths
+from critical_buildings.control.ruleset import AREA_TAGS
 from critical_buildings.silver import osm_geom
 
 IMP_RANK = {"High": 0, "Medium": 1, "Low": 2}
@@ -38,9 +38,9 @@ def _row(source, sid, name, rule, refs, geom, note="", osm_building=""):
                 matched_refs=";".join(str(r) for r in sorted(refs)), note=note, rule_notes=rule.notes, osm_building=osm_building, geometry=geom)
 
 
-def classify_osm(tags, boundary=None):
+def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
     osm_rules = [t for t in tags if t.source == "OSM"]
-    feats = osm_geom.load_elements(paths.bronze_file("osm_overpass", "osm_features.json", area=paths.DEFAULT_AREA))
+    feats = osm_geom.load_elements(paths.bronze_file("osm_overpass", "osm_features.json", area=area))
     rows, areas, sites = [], [], []
     for _, f in feats.iterrows():
         hits = [r for r in osm_rules if _osm_match(f.tags, r)]
@@ -60,7 +60,7 @@ def classify_osm(tags, boundary=None):
 
     # area-type features (port, military land, aerodrome): classify the buildings inside them
     own_ids = {r["source_id"] for r in rows}
-    blds = osm_geom.load_elements(paths.bronze_file("osm_overpass", "osm_area_buildings.json", area=paths.DEFAULT_AREA))
+    blds = osm_geom.load_elements(paths.bronze_file("osm_overpass", "osm_area_buildings.json", area=area))
     blds = blds[~blds.osm_id.isin(own_ids)]
     pts = blds.geometry.representative_point()
     inherited = {}
@@ -90,10 +90,10 @@ def classify_osm(tags, boundary=None):
     return out, site_gdf
 
 
-def load_os_sites(tags, boundary):
+def load_os_sites(tags, boundary, area=paths.DEFAULT_AREA):
     """OS Open Map Local FunctionalSite polygons whose theme/classification maps to one of our rules."""
     os_rules = {(t.key, t.value): t for t in tags if t.source == "OS"}
-    g = _read_layer("FunctionalSite", boundary)
+    g = _read_layer("FunctionalSite", boundary, area)
     rows = []
     for _, r in g.iterrows():
         rule = next((os_rules[(r.SITETHEME, c.strip())] for c in str(r.CLASSIFICA).split(",")
@@ -105,19 +105,19 @@ def load_os_sites(tags, boundary):
                             geometry="geometry", crs=27700)
 
 
-def _read_layer(layer, boundary):
-    g = pd.concat([gpd.read_file(f) for f in paths.os_layer_paths(layer)], ignore_index=True)
+def _read_layer(layer, boundary, area=paths.DEFAULT_AREA):
+    g = pd.concat([gpd.read_file(f) for f in paths.os_layer_paths(layer, tiles=sorted(config.load_area(area)["os_grid_squares"]))], ignore_index=True)
     g = gpd.GeoDataFrame(g, geometry=gpd.GeoSeries(g.geometry, crs=27700).force_2d(), crs=27700)
     return g[g.geometry.representative_point().within(boundary)]
 
 
-def classify_os(tags, boundary):
+def classify_os(tags, boundary, area=paths.DEFAULT_AREA):
     """Classify OS Open Map Local features: ImportantBuilding polygons and RailwayStation points."""
     os_rules = {(t.key, t.value): t for t in tags if t.source == "OS"}
     layers = [("ImportantBuilding", None), ("RailwayStation", "Rail Transport")]   # (layer, fixed theme)
     rows, total = [], 0
     for layer, fixed_theme in layers:
-        g = _read_layer(layer, boundary)
+        g = _read_layer(layer, boundary, area)
         total += len(g)
         for _, r in g.iterrows():
             rule = os_rules.get((fixed_theme or r.BUILDGTHEM, r.CLASSIFICA))
@@ -126,19 +126,10 @@ def classify_os(tags, boundary):
     return gpd.GeoDataFrame(rows, columns=COLS, geometry="geometry", crs=27700), total
 
 
-def run(boundary=None):
-    tags, _ = load_rules()
-    boundary = boundary if boundary is not None else osm_geom.area_boundary()
-    osm, osm_sites = classify_osm(tags, boundary)
-    os_, os_total = classify_os(tags, boundary)
-    os_sites = load_os_sites(tags, boundary)
+def run(tags, boundary=None, area=paths.DEFAULT_AREA):
+    """Classify every OSM and OS feature in the area with the rule tags. Returns osm, os, os_total, site candidates."""
+    boundary = boundary if boundary is not None else osm_geom.area_boundary(area)
+    osm, osm_sites = classify_osm(tags, boundary, area)
+    os_, os_total = classify_os(tags, boundary, area)
+    os_sites = load_os_sites(tags, boundary, area)
     return osm, os_, os_total, pd.concat([os_sites, osm_sites], ignore_index=True)
-
-
-if __name__ == "__main__":
-    osm, os_, total, sites = run()
-    print(sites.origin.value_counts().to_dict())
-    print(f"OSM classified: {len(osm)}   OS classified: {len(os_)} of {total} Important Buildings in Suffolk")
-    print(osm.groupby("building_type").size().sort_values(ascending=False).to_string())
-    print("--- OS")
-    print(os_.groupby("building_type").size().sort_values(ascending=False).to_string())

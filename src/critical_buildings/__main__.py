@@ -1,3 +1,4 @@
-from critical_buildings.pipeline import main
+import sys
+from critical_buildings.cli import main
 
-main()
+sys.exit(main())

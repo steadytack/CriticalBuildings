@@ -64,3 +64,26 @@ def split_tag(source, tag):
         return key, value
     key, value = [s.strip() for s in tag.split(">")]
     return key, value
+
+
+@dataclass
+class RuleSet:
+    """A published rule set, ready for the pipeline: tags to classify with, role settings, register mapping."""
+    version_id: int
+    label: str                 # v<id>-<hash>, stamped on every output record
+    snapshot: dict
+    tags: list
+    role: dict                 # min_area, ancillary (set), primary (set), per_type
+    mapping: list              # ACTIVE reference mapping rows, in order (first match wins)
+    errors: list
+    warnings: list
+
+    @property
+    def priorities(self):
+        """{rule_ref: priority}: lower wins when a feature matches several rules."""
+        return {t.rule_ref: t.priority for t in self.tags}
+
+    def require_valid(self):
+        if self.errors:
+            raise SystemExit("Rules check FAILED:\n  " + "\n  ".join(self.errors))
+        return self

@@ -1,0 +1,67 @@
+# Pipeline settings: every threshold the matching, grouping and scoring logic uses.
+# Business rules (what counts as a fire station, importance, priorities) are NOT here: they live in the governed
+# control store (python -m critical_buildings ui). These are technical tuning values; change them deliberately and
+# record why in your commit message - they alter the output. `python -m critical_buildings check` validates this file.
+
+matching:                                   # shared by merge, sites and reference matching
+  # Categories where OS and OSM name the sub-types differently (e.g. 'Primary Education' vs school=primary), so a
+  # match only needs the same category. In every other category the building type must also agree.
+  loose_categories: [Education]
+
+merge:                                      # OS building <-> OSM feature
+  point_distance_m: 25                      # OS and OSM features this close (metres) may be the same building
+  overlap_fraction: 0.3                     # share of the OS polygon an OSM polygon must cover to count as overlap
+  name_agree: 0.6                           # OS and OSM names this similar make a proximity-only match trustworthy
+  point_distance_by_type:                   # large or sparsely mapped types get a wider proximity match
+    Railway Station: 100
+
+sites:                                      # grouping buildings into sites
+  cluster_gap_m: 30                         # same-type buildings this close form a proximity cluster
+  attach_m: 30                              # a same-named building this close to a site outline joins that site
+  merge_overlap: 0.5                        # OS and OSM site polygons overlapping this much are one site
+
+reference_match:                            # DfE / CQC / NHS ODS records <-> sites
+  compatible_pairs:                         # building types that may match each other (names differ between sources)
+    - [Care Home, Assisted Living Facilities]
+    - [Care Home, Mental health facilities]
+    - [GP Surgery, Clinics offering Medical Treatment]
+    - [Hospital, Clinics offering Medical Treatment]
+    - [Mental health facilities, Clinics offering Medical Treatment]
+    - [Hospital, Mental health facilities]
+  max_distance_m: 2000                      # furthest a register point may be from a site and still be considered
+  close_m: 50                               # 'on top of the site': the name need only be roughly similar
+  close_min_name: 0.2
+  mid_m: 150                                # up to this distance the name must be a good match ...
+  mid_min_name: 0.6
+  far_name_limit_m: 500                     # ... up to this distance almost identical ...
+  far_min_name: 0.95
+  far_exact_m: 2000                         # ... and an identical full name + type is accepted even this far
+  conflict_m: 100                           # a same-named record of a different type this close reclassifies the site
+  postcode_agree_m: 200                     # a location this close to the register's postcode agrees with it
+  postcode_far_m: 300                       # and one this far from it disagrees
+  location_review_m: 500                    # a matched site this far from its register point goes to review
+  snap_m: 20                                # register points snap to a building footprint this close
+  sole_exact_m: 100                         # one same-type site within this distance is accepted whatever its name
+  not_covered: [Nursery & Child Care]       # DfE only lists maintained nurseries, so private ones cannot be verified
+  school_types: [Primary School, Secondary School, School, School For Special Needs, Nursery & Child Care]
+  stop_words: [the, school, primary, secondary, infant, junior, nursery, academy, church, england, of, c, e, ce, cofe,
+               voluntary, controlled, aided, community, college, hospital, care, home, centre, center, surgery,
+               medical, practice, health, house, lodge, and, a, an, at, in, for, ltd, limited, cic, trust, unit,
+               clinic, infants, juniors]
+
+quality:                                    # data quality score (0-100), documented in the data dictionary
+  verification_points: {Verified: 40, Verified (manual): 40, Authoritative only: 40, Not covered: 20, Unverified: 10, Closed per register: 0}
+  source_points: {Both: 25, OSM: 12, OS Important Buildings: 12}
+  register_points: 20                       # records that come from a register (DfE / CQC / NHS ODS)
+  confidence_points: {High: 20, Medium: 12, Low: 5}
+  polygon_points: 15
+  point_points: 5
+  open_review_penalty: -10
+  band_high_min: 75
+  band_medium_min: 50
+
+retention:                                  # used by `archive` (dry-run by default). Release-pinned items are never touched.
+  bronze_keep: 3                            # latest snapshots kept per source
+  silver_keep: 2                            # latest silver builds kept per area
+  gold_keep: 5                              # latest gold runs kept per area
+  dev_run_days: 14                          # dev runs older than this are eligible for pruning

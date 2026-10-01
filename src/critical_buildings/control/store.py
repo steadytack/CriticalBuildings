@@ -115,6 +115,20 @@ class ControlStore:
             "reference_mapping": mapping,
         }
 
+    def ruleset(self, version_id=None):
+        """The pipeline's view of a published rule set (latest by default), with validation results attached."""
+        vid, snap = self.get_version(version_id)
+        errors, warnings, tags = validate.check_rules(snap)
+        errors = errors + validate.check_role_settings(snap) + validate.check_reference_mapping(snap)
+        role = snap["role"]
+        return rs.RuleSet(
+            version_id=vid, label=rs.version_label(vid, snap), snapshot=snap, tags=tags,
+            role=dict(min_area=float(role["min_area"]), ancillary=set(role["ancillary"]), primary=set(role["primary"]),
+                      per_type={k: float(v) for k, v in role["per_type"].items()}),
+            mapping=[dict(source=m["source"], field=m["field"], match=m["match"], value=m["value"],
+                          building_type=m["building_type"]) for m in snap["reference_mapping"] if m["active"]],
+            errors=errors, warnings=warnings)
+
     def versions_df(self):
         with self.conn() as c:
             return pd.read_sql_query("SELECT version_id, created_at, created_by, approved_by, reason, content_hash "

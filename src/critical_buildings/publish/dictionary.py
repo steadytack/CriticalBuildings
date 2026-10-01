@@ -10,30 +10,12 @@ import numpy as np
 import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from critical_buildings import config
 from critical_buildings.bronze import manifest
-from critical_buildings.gold import merge
-from critical_buildings.gold import reference_match as refmatch
-from critical_buildings.gold import sites as sitelib
+from critical_buildings.gold import quality
 
 # ------------------------------------------------------------------ data quality score
-VERIFICATION_POINTS = {"Verified": 40, "Verified (manual)": 40, "Authoritative only": 40, "Not covered": 20,
-                       "Unverified": 10, "Closed per register": 0}
-SOURCE_POINTS = {"Both": 25, "OSM": 12, "OS Important Buildings": 12}   # other sources are registers
-REGISTER_POINTS = 20
-CONFIDENCE_POINTS = {"High": 20, "Medium": 12, "Low": 5}
-POLYGON_POINTS, POINT_POINTS = 15, 5
-OPEN_REVIEW_PENALTY = -10
-BANDS = "High 75-100, Medium 50-74, Low 0-49"
-
-
-def quality_score(df):
-    """0-100 score from how well a record is evidenced. A heuristic to help sorting and filtering, not a probability."""
-    ver = df["Verification"].map(VERIFICATION_POINTS).fillna(10)
-    src = df["Source"].map(SOURCE_POINTS).fillna(REGISTER_POINTS)
-    conf = df["Confidence"].map(CONFIDENCE_POINTS).fillna(12)
-    geom = np.where(df["Geom"].str.upper().str.startswith("POINT"), POINT_POINTS, POLYGON_POINTS)
-    pen = np.where(df["Review Status"] == "Open", OPEN_REVIEW_PENALTY, 0)
-    return (ver + src + conf + geom + pen).clip(0, 100).astype(int)
+_bands = quality.bands_label
 
 
 # ------------------------------------------------------------------ column dictionary
@@ -99,7 +81,7 @@ D = {
     "Review Reason": ("Quality and review", "Why the record was flagged for a human look.", ""),
     "Review Status": ("Quality and review", "Blank = nothing to review; Open = needs a decision; Decided = decision recorded in overrides.csv.", "Open"),
     "Data Quality Score": ("Quality and review", "0-100 score of how well the record is evidenced (see 'Quality score' sheet).", "82"),
-    "Data Quality Band": ("Quality and review", f"Band of the score: {BANDS}.", "High"),
+    "Data Quality Band": ("Quality and review", f"Band of the score: {_bands()}.", "High"),
     # location
     "Latitude": ("Location", "Latitude (WGS84, EPSG:4326) of a point inside the record.", "52.2406"),
     "Longitude": ("Location", "Longitude (WGS84, EPSG:4326) of a point inside the record.", "0.7167"),
@@ -236,18 +218,18 @@ def write_docs(df, sites, version, today, changes, out):
         ("Match confidence (0-20)", "High = 20; Medium = 12; Low = 5"),
         ("Geometry (0-15)", "Building footprint polygon = 15; point only = 5"),
         ("Open review item", "-10 while the record has an Open review status"),
-        ("Total", f"Sum, capped 0-100. Bands: {BANDS}. A heuristic for sorting and filtering, not a probability."),
+        ("Total", f"Sum, capped 0-100. Bands: {_bands()}. A heuristic for sorting and filtering, not a probability."),
     ], columns=["Component", "Points"])
     sources = pd.DataFrame(src, columns=["Source", "What we use", "Licence", "Attribution", "Files", "Downloaded", "Size (MB)"])
     method = pd.DataFrame({"Step": [
         "1. Rules check: the Rules, Role settings and Reference mapping sheets are validated; the run stops with plain-English errors if wrong.",
         "2. Classify: each OSM feature (tags) and OS Important Building / station (theme > classification) is matched to a rule. The lowest Priority number wins.",
         "3. Merge: an OS building and an OSM feature are the same building if same category (same building type outside Education) and they overlap "
-        f"(>= {merge.OVERLAP_FRACTION:.0%} of the OS polygon) or are within {merge.POINT_DISTANCE_M} m "
-        f"(stations {merge.POINT_DISTANCE_BY_TYPE.get('Railway Station')} m). Proximity-only matches need the same type and similar names.",
-        f"4. Sites: buildings are grouped by OS Functional Site, then OSM site/area polygon, then {sitelib.CLUSTER_GAP_M} m proximity cluster; "
+        f"(>= {config.get().merge.overlap_fraction:.0%} of the OS polygon) or are within {config.get().merge.point_distance_m} m "
+        f"(stations {config.get().merge.point_distance_by_type.get('Railway Station')} m). Proximity-only matches need the same type and similar names.",
+        f"4. Sites: buildings are grouped by OS Functional Site, then OSM site/area polygon, then {config.get().sites.cluster_gap_m} m proximity cluster; "
         "same-named strays within "
-        f"{sitelib.SITE_ATTACH_M} m join the site.",
+        f"{config.get().sites.attach_m} m join the site.",
         "5. Authoritative check: DfE, CQC and NHS ODS records are matched to sites by type, distance and name. Unmatched register records are added as new buildings; "
         "same-name records of a different type reclassify the site; sites no register recognises are marked Unverified.",
         "6. Roles: buildings are labelled Primary / Ancillary / Standalone / Whole site / Unknown from footprint size and OSM building tags (Role settings sheet).",

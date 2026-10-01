@@ -2,19 +2,21 @@
 
 Tier 1  OS Functional Site polygon        (named, authoritative)
 Tier 2  OSM site / area polygon           (e.g. a school campus, military land, aerodrome)
-Tier 3  Proximity cluster                 (same type, buildings within CLUSTER_GAP_M of each other)
+Tier 3  Proximity cluster                 (same type, buildings within sites.cluster_gap_m of each other)
         Single building                   (nothing else nearby)
-OS and OSM site polygons of the same category that overlap by >= SITE_MERGE_OVERLAP are one site.
+OS and OSM site polygons of the same category that overlap by >= sites.merge_overlap are one site.
 """
 import geopandas as gpd
 import pandas as pd
 from shapely.ops import unary_union
 
-CLUSTER_GAP_M = 30
-SITE_ATTACH_M = 30       # a same-named building this close to a site outline joins that site
-SITE_MERGE_OVERLAP = 0.5
-LOOSE_CATEGORIES = {"Education"}   # clusters by category rather than building type (as in merge.py)
+from critical_buildings import config
+
 IMP_RANK = {"High": 0, "Medium": 1, "Low": 2}
+
+
+def _c():
+    return config.get().sites
 
 
 def _merge_candidates(cs):
@@ -34,7 +36,7 @@ def _merge_candidates(cs):
         if k <= i or cs.at[i, "category"] != cs.at[k, "category"]:
             continue
         a, b = cs.at[i, "geometry"], cs.at[k, "geometry"]
-        if a.intersection(b).area / max(min(a.area, b.area), 1e-9) >= SITE_MERGE_OVERLAP:
+        if a.intersection(b).area / max(min(a.area, b.area), 1e-9) >= _c().merge_overlap:
             parent[find(i)] = find(k)
     cs["grp"] = [find(i) for i in range(len(cs))]
     out = []
@@ -78,7 +80,7 @@ def assign_sites(recs, site_candidates):
         keep = merged.reset_index(drop=True)
         kidx = keep.sindex
         for i, r in left.iterrows():
-            for ci in kidx.query(r.geometry.buffer(SITE_ATTACH_M), predicate="intersects"):
+            for ci in kidx.query(r.geometry.buffer(_c().attach_m), predicate="intersects"):
                 row = keep.iloc[ci]
                 if (row.category == r.category and isinstance(row["name"], str) and row["name"]
                         and row["name"].casefold() == str(r["name"]).casefold()):
@@ -91,9 +93,9 @@ def assign_sites(recs, site_candidates):
     # tier 3: cluster what is left
     left = recs[recs.site_group.isna()]
     if len(left):
-        key = left.category.where(left.category.isin(LOOSE_CATEGORIES), left.building_type)
+        key = left.category.where(left.category.isin(config.get().matching.loose_categories), left.building_type)
         for k, grp in left.groupby(key):
-            buf = [g.buffer(CLUSTER_GAP_M / 2) for g in grp.geometry]
+            buf = [g.buffer(_c().cluster_gap_m / 2) for g in grp.geometry]
             u = unary_union(buf)
             parts = list(u.geoms) if u.geom_type == "MultiPolygon" else [u]
             pg = gpd.GeoDataFrame({"p": range(len(parts))}, geometry=parts, crs=27700)
@@ -106,7 +108,7 @@ def assign_sites(recs, site_candidates):
                 method = "Single building" if len(m) == 1 else "Proximity cluster"
                 names = [n for n in m["name"] if n]
                 sites[gid] = dict(name=pd.Series(names).mode().iloc[0] if names else "", method=method,
-                                  geometry=unary_union(list(m.geometry)).convex_hull.buffer(CLUSTER_GAP_M / 2))
+                                  geometry=unary_union(list(m.geometry)).convex_hull.buffer(_c().cluster_gap_m / 2))
                 recs.loc[members.index, "site_group"] = gid
                 recs.loc[members.index, "site_method"] = method
 
