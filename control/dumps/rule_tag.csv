@@ -1,0 +1,121 @@
+id,rule_ref,source,tag,active,notes
+1,1,OS,Emergency services > Fire Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+2,1,OS,Emergency services > Fire Service Training,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+3,1,OSM,amenity=fire_station,1,
+4,2,OS,Emergency services > Police HQ,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+5,2,OS,Emergency services > Police Services,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+6,2,OS,Emergency services > Police Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+7,2,OSM,amenity=police,1,
+8,3,OSM,emergency=ambulance_station,1,
+9,4,OS,Emergency services > Coastguard Lookout,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+10,4,OSM,amenity=coast_guard,1,
+11,4,OSM,emergency=coast_guard,1,
+12,5,OS,Emergency services > Lifeboat Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+13,5,OSM,emergency=lifeboat_station,1,
+14,5,OSM,emergency=water_rescue,1,
+15,5,OSM,emergency=marine_rescue,1,
+16,5,OSM,amenity=lifeboat_station,1,
+17,6,OS,Emergency services > Hospital,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+18,6,OSM,amenity=hospital,1,
+19,6,OSM,healthcare=hospital,1,
+20,7,OS,Emergency services > Hospice,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+21,7,OSM,healthcare=hospice,1,
+22,7,OSM,social_facility=hospice,1,
+23,8,OSM,emergency=control_centre,1,
+24,9,OSM,emergency=mountain_rescue,1,
+25,9,OSM,emergency=air_rescue_service,1,
+26,9,OSM,amenity=rescue_station,1,
+27,10,OSM,amenity=doctors,1,
+28,10,OSM,healthcare=doctor,1,
+29,11,OSM,amenity=clinic,1,
+30,11,OSM,healthcare=birthing_centre,1,
+31,11,OSM,healthcare=clinic,1,
+32,11,OSM,healthcare=dialysis,1,
+33,11,OSM,healthcare=medical_imaging,1,
+34,11,OSM,healthcare=rehabilitation,1,
+35,12,OSM,social_facility=nursing_home,1,
+36,12,OSM,building=nursing_home,1,
+37,13,OSM,social_facility=assisted_living,1,
+38,14,OSM,social_facility:for=mental_health,1,
+39,14,OSM,healthcare=counselling,1,
+40,15,OSM,healthcare=laboratory,1,
+41,16,OS,Education > First School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+42,16,OSM,amenity=kindergarten,1,
+43,16,OSM,amenity=childcare,1,
+44,17,OS,Education > Primary School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+45,17,OS,Education > Infant School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+46,17,OS,Education > Junior School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+47,17,OS,Education > Non-State Primary Or Preparatory School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+48,17,OSM,school=primary,1,
+49,18,OS,Education > Secondary School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+50,18,OS,Education > Middle School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+51,18,OS,Education > Non-State Secondary School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+52,18,OSM,school=secondary,1,
+53,19,OS,Education > Further Education,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+54,19,OS,Education > Higher Education,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+55,19,OS,Education > University,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+56,19,OS,Education > University College,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+57,19,OSM,amenity=college,1,
+58,19,OSM,amenity=university,1,
+59,19,OSM,school=vocational,1,
+60,20,OS,Education > School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+61,20,OSM,amenity=language_school,1,Generic school rule - lower priority so specific school rules win.
+62,20,OSM,amenity=music_school,1,Generic school rule - lower priority so specific school rules win.
+63,20,OSM,school=sport,1,Generic school rule - lower priority so specific school rules win.
+64,21,OS,Education > School For Special Needs,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+65,21,OSM,school=blind,1,
+66,21,OSM,school=special_education_needs,1,
+67,22,OS,Transport > Passenger Ferry Terminal,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+68,22,OS,Transport > Ship Passenger Terminal,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+69,22,OS,Transport > Vehicular Ferry Terminal,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+70,22,OS,Transport > Vehicular Ferry Terminal International,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+71,22,OSM,landuse=port,1,landuse=port is an area: buildings inside the area are selected.
+72,22,OSM,amenity=ferry_terminal,1,landuse=port is an area: buildings inside the area are selected.
+73,23,OS,Transport > Railway Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+74,23,OS,Transport > Principal Railway Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+75,23,OS,Transport > Vehicular Rail Terminal,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+76,23,OSM,railway=station,1,
+77,23,OSM,public_transport=station,0,Switched off: also matches bus/coach stations and ferry jetties. railway=station is enough for rail stations.
+78,24,OS,Transport > Underground Railway System Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+79,24,OSM,station=subway,1,
+80,25,OSM,aeroway=aerodrome,1,Area tag: buildings inside the area are selected.
+81,26,OS,Government Buildings > Central Government Services,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+82,26,OSM,government=ministry,1,
+83,27,OSM,landuse=military,1,Area tag: buildings inside the area are selected.
+84,27,OSM,military_service=*,1,Area tag: buildings inside the area are selected.
+85,28,OS,Government Buildings > HM Prison Service,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+86,28,OS,Government Buildings > HM Detention Centre,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+87,28,OSM,amenity=prison,1,
+88,29,OS,Government Buildings > Customs Inspection,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+89,29,OSM,amenity=customs,1,
+90,29,OSM,government=customs,1,
+91,30,OS,Government Buildings > Law Court,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+92,30,OSM,amenity=courthouse,1,
+93,31,OS,Government Buildings > Local Government Services,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+94,31,OSM,amenity=townhall,1,
+95,32,OS,Miscellaneous > Conference Or Exhibition Centre,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+96,32,OSM,amenity=conference_centre,1,
+97,32,OSM,amenity=exhibition_centre,1,
+98,33,OSM,leisure=stadium,1,
+99,34,MANUAL,,1,No automatic tags: applied by manual override only.
+100,35,OSM,telecom:data_center=*,1,
+101,35,OSM,building=data_center,1,
+102,36,OSM,plant:output:hot_water=*,1,"Any OSM feature with a plant:output:* tag (any value). In Suffolk this is mostly power plants: solar farms, plus biomass, biogas, battery storage, wind, gas, waste and nuclear. Tag kept deliberately broad."
+103,36,OSM,plant:output:electricity=*,1,"Any OSM feature with a plant:output:* tag (any value). In Suffolk this is mostly power plants: solar farms, plus biomass, biogas, battery storage, wind, gas, waste and nuclear. Tag kept deliberately broad."
+104,1,OS,Emergency Service > Fire Station,1,OS Open Map Local
+105,2,OS,Emergency Service > Police Station,1,OS Open Map Local
+106,6,OS,Medical Care > Hospital,1,OS Open Map Local
+107,7,OS,Medical Care > Hospice,1,OS Open Map Local
+108,12,OS,Medical Care > Medical Care Accommodation,0,"Switched off: OS 'Medical Care Accommodation' is staff accommodation at hospitals, not care homes."
+109,17,OS,Education > Primary Education,1,OS Open Map Local
+110,17,OS,Education > Non State Primary Education,1,OS Open Map Local
+111,18,OS,Education > Secondary Education,1,OS Open Map Local
+112,18,OS,Education > Non State Secondary Education,1,OS Open Map Local
+113,19,OS,Education > Further Education,1,OS Open Map Local
+114,19,OS,Education > Higher or University Education,1,OS Open Map Local
+115,21,OS,Education > Special Needs Education,1,OS Open Map Local
+116,22,OS,Water Transport > Passenger Ferry Terminal,1,Open Map Local port polygons treated as ferry & ship terminals.
+117,22,OS,Water Transport > Port Consisting of Docks and Nautical Berthing,1,Open Map Local port polygons treated as ferry & ship terminals.
+118,25,OS,Air Transport > Airport,1,Open Map Local airport building polygons.
+119,25,OS,Air Transport > Airfield,1,OS Open Map Local functional site (airfield polygon); used to group airport buildings into a site.
+120,23,OS,Rail Transport > Railway Station,1,"From the OS Open Map Local 'RailwayStation' layer (station points). The layer has no theme, so 'Rail Transport' is just a label."

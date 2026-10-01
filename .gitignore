@@ -13,11 +13,8 @@ archive/
 
 # Local safety copies and working outputs
 legacy/baseline_*/
-outputs/*
-# ...except the small human-governed inputs that still live here until they move into control/
-!outputs/overrides.csv
-!outputs/id_registry.csv
-!outputs/site_registry.csv
+outputs/
+legacy/*.bak
 
 # Office lock files, OS junk
 ~$*

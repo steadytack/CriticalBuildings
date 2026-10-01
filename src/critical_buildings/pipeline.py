@@ -1,4 +1,4 @@
-"""Run the whole pipeline for the pilot area:  python pipeline/run.py
+"""Run the whole pipeline for the pilot area:  python -m critical_buildings
 
 rules check -> classify -> merge -> stable IDs -> apply overrides -> write outputs -> change tracking -> QA map
 Outputs go to outputs/.
@@ -12,6 +12,7 @@ import geopandas as gpd
 import pandas as pd
 
 from critical_buildings import paths, rules_io
+from critical_buildings.control.store import ControlStore
 from critical_buildings.gold import merge, roles
 from critical_buildings.gold import reference_match as refmatch
 from critical_buildings.gold import sites as sitelib
@@ -23,8 +24,6 @@ from critical_buildings.silver import reference as ref_data
 ROOT = paths.ROOT
 OUT = paths.OUTPUTS
 OUT.mkdir(exist_ok=True)
-REGISTRY = OUT / "id_registry.csv"
-OVERRIDES = OUT / "overrides.csv"
 OVR_COLS = ["Primary Category Override", "Building Type Override", "Operational Importance Override",
             "Operational Importance Driver Override", "Manual Override Notes", "Building Role Override", "Review Decision", "Verification Override"]
 SCHEMA = ["Building ID", "Source", "Source Feature ID", "Primary Category Default", "Building Type Default",
@@ -46,16 +45,14 @@ EXTRA = ["Name", "Primary Category", "Building Type", "Operational Importance", 
          "Building Role", "Building Role Default", "Building Role Reason", "Building Role Override",
          "Classification Note", "Review Status", "Review Decision", "Verification Override",
          "Latitude", "Longitude", "Data Quality Score", "Data Quality Band"] + REF_COLS
-SITE_REGISTRY = OUT / "site_registry.csv"
 
 
-def assign_ids(recs, today):
+def assign_ids(recs, today, store, run_id):
     """Keep Building IDs stable across runs (match on OS id, then OSM id, then footprint overlap)."""
     recs = recs.copy()
     recs["os_key"] = recs.source_feature_id.str.split(" / ").str[0].where(recs.source != "OSM")
     recs["osm_key"] = recs.source_feature_id.str.split(" / ").str[-1].where(recs.source != "OS Important Buildings")
-    reg = pd.read_csv(REGISTRY, dtype=str) if REGISTRY.exists() else pd.DataFrame(
-        columns=["building_id", "os_key", "osm_key", "created", "wkt"])
+    reg = store.building_registry_df()
     by_os = {k: b for k, b in zip(reg.os_key, reg.building_id) if isinstance(k, str)}
     osm_only = reg[reg.os_key.isna()]
     by_osm = {k: b for k, b in zip(osm_only.osm_key, osm_only.building_id) if isinstance(k, str)}
@@ -99,18 +96,18 @@ def assign_ids(recs, today):
         created.setdefault(ids[n], str(today))
     recs["Building ID"] = ids
     recs["Created Date"] = recs["Building ID"].map(created)
-    pd.DataFrame(dict(building_id=recs["Building ID"], os_key=recs.os_key, osm_key=recs.osm_key,
-                      created=recs["Created Date"], wkt=recs.geometry.to_wkt())).to_csv(REGISTRY, index=False)
+    store.save_building_registry(pd.DataFrame(dict(building_id=recs["Building ID"], os_key=recs.os_key,
+                                                   osm_key=recs.osm_key, created=recs["Created Date"],
+                                                   wkt=recs.geometry.to_wkt())), run_id)
     return recs, new
 
 
-def assign_site_ids(recs, sites, today):
+def assign_site_ids(recs, sites, today, store, run_id):
     """Stable Site IDs: a site keeps the ID most of its buildings had in the previous run."""
     prev_csv = OUT / "critical_buildings.csv"
     prev = pd.read_csv(prev_csv, dtype=str) if prev_csv.exists() else pd.DataFrame()
     old_site = dict(zip(prev["Building ID"], prev["Site ID"])) if "Site ID" in prev else {}
-    reg = pd.read_csv(SITE_REGISTRY, dtype=str) if SITE_REGISTRY.exists() else pd.DataFrame(
-        columns=["site_id", "created"])
+    reg = store.site_registry_df()
     created = dict(zip(reg.site_id, reg.created))
     nxt = (reg.site_id.str[5:].astype(int).max() + 1) if len(reg) else 1
     taken, mapping = set(), {}
@@ -128,14 +125,12 @@ def assign_site_ids(recs, sites, today):
     sites = sites.copy()
     sites["Site ID"] = sites.site_group.map(mapping)
     sites["Created Date"] = sites["Site ID"].map(created)
-    pd.DataFrame({"site_id": list(created), "created": list(created.values())}).to_csv(SITE_REGISTRY, index=False)
+    store.save_site_registry({sid: created[sid] for sid in mapping.values()}, run_id)
     return recs, sites
 
 
-def apply_overrides(df):
-    if not OVERRIDES.exists():
-        pd.DataFrame(columns=["Building ID"] + OVR_COLS + ["Exclude (Y)"]).to_csv(OVERRIDES, index=False)
-    ov = pd.read_csv(OVERRIDES, dtype=str).fillna("")
+def apply_overrides(df, store):
+    ov = store.overrides_df().fillna("")
     for c in OVR_COLS + ["Exclude (Y)", "Exclude Site (Y)"]:      # people may fill in only the columns they need
         if c not in ov:
             ov[c] = ""
@@ -160,11 +155,13 @@ def main():
     for w in warns:
         print("note:", w)
     if errs:
-        print("Rules check FAILED - fix these in the Rules sheet, then run again:")
+        print("Rules check FAILED - fix these in the rules UI (python -m critical_buildings ui), then run again:")
         for e in errs:
             print("  -", e)
         sys.exit(1)
     version = rules_io.rule_version()
+    store = ControlStore()
+    run_id = dt.datetime.now().strftime("%Y%m%dT%H%M%S") + "_" + paths.DEFAULT_AREA
     merge.PRIO = {t.rule_ref: t.priority for t in tags}
     today = dt.date.today()
     print("classifying ...")
@@ -179,8 +176,8 @@ def main():
     ref = ref_all[~ref_all.building_type.isin(["IGNORE", "UNMAPPED"])].copy()
     recs, sites_df, ref_gaps, ref_matches = refmatch.attach_reference(recs, sites_df, ref, tags, boundary, ref_all, ref_data.postcode_points())
     print(f"  {len(ref)} reference records: {ref_matches.ri.nunique()} matched to sites, {len(ref_gaps)} added as new buildings")
-    recs, new_ids = assign_ids(recs, today)
-    recs, sites_df = assign_site_ids(recs, sites_df, today)
+    recs, new_ids = assign_ids(recs, today, store, run_id)
+    recs, sites_df = assign_site_ids(recs, sites_df, today, store, run_id)
     recs = roles.assign_roles(recs, role_settings)
 
     df = pd.DataFrame(index=recs.index)
@@ -225,7 +222,7 @@ def main():
     df["Building Role Override"] = ""
     df["Review Decision"] = ""
     df["Verification Override"] = ""
-    df = apply_overrides(df)
+    df = apply_overrides(df, store)
     # Review Status: '' = nothing to review, Open = needs a decision, Decided = a decision is recorded in overrides.csv
     df["Review Status"] = ""
     has_reason = df["Review Reason"] != ""
