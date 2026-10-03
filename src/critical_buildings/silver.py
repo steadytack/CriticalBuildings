@@ -260,7 +260,7 @@ def _cqc_locations(area=paths.DEFAULT_AREA):
     if cache is not None:
         return pd.read_parquet(cache)
     cache = paths.silver_conformed_dir(area) / "cqc_locations.parquet"
-    c = pd.read_excel(paths.bronze_file("cqc_hsca", "active_locations.ods"), engine="odf",
+    c = pd.read_excel(paths.bronze_file("cqc_hsca", "active_locations.ods"), engine="calamine",
                       sheet_name="HSCA_Active_Locations")
     c.to_parquet(cache)
     paths.conformed_stamp(area, "cqc_locations.parquet", inputs)
