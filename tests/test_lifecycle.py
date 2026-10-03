@@ -84,9 +84,17 @@ def test_default_release_name_counts_releases_in_the_month(isolated_paths, store
     assert runs.next_release_name(store, dt.date(2026, 11, 1)) == "v2026.11.0"
 
 
+def test_previous_run_is_read_from_either_file_layout(isolated_paths, store):
+    make_run(store, "R1")
+    (runs.run_dir("suffolk", "R1") / "buildings.csv").write_text("Building ID,Site ID\nBLDG-000002,SITE-000002\n")
+    runs.set_current("suffolk", "R1")
+    assert runs.load_previous("suffolk")[1].iloc[0]["Site ID"] == "SITE-000002"
+
+
 def test_current_pointer_and_previous_run(isolated_paths, store):
     assert runs.load_previous("suffolk") == (None, None)
     make_run(store, "R1")
+    (runs.run_dir("suffolk", "R1") / "buildings.csv").unlink()                         # a run in the older file layout
     (runs.run_dir("suffolk", "R1") / "critical_buildings.csv").write_text("Building ID,Site ID\nBLDG-000001,SITE-000001\n")
     runs.set_current("suffolk", "R1")
     rid, df = runs.load_previous("suffolk")
@@ -173,7 +181,7 @@ def test_apply_archives_with_verification_then_restore_brings_it_back(isolated_p
     assert not runs.run_dir("suffolk", "R1").exists()
     assert store.get_run("R1")["status"] == "archived" and store.get_run("R1")["archive_path"]
     retention.restore(store, "gold", "R1")
-    assert (runs.run_dir("suffolk", "R1") / "critical_buildings.csv").exists()
+    assert (runs.run_dir("suffolk", "R1") / "buildings.csv").exists()
     assert store.get_run("R1")["status"] == "succeeded"
     with pytest.raises(FileExistsError):
         retention.restore(store, "gold", "R1")
@@ -201,3 +209,11 @@ def test_a_run_can_pin_an_older_published_rule_set(seeded_store):
     assert pinned.version_id == 1 and pinned.priorities[1] == 50 and pinned.label.startswith("v1-")
     with pytest.raises(ControlError):
         s.ruleset(99)
+
+
+def test_a_run_left_running_by_a_dead_process_can_be_closed(isolated_paths, store):
+    make_run(store, "R1", status="running")
+    assert runs.abandon(store, "suffolk", "R1") is True
+    row = store.get_run("R1")
+    assert row["status"] == "failed" and "stopped" in row["error"] and not runs.run_dir("suffolk", "R1").exists()
+    assert runs.abandon(store, "suffolk", "R1") is False            # already closed

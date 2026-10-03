@@ -17,7 +17,7 @@ from pathlib import Path
 import requests
 
 from critical_buildings import config, paths
-from critical_buildings.control.ruleset import AREA_TAGS
+from critical_buildings.control.rules import AREA_TAGS
 
 log = logging.getLogger(__name__)
 

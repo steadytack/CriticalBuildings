@@ -2,7 +2,8 @@
 import copy
 
 import helpers
-from critical_buildings.control import validate
+
+from critical_buildings.control import rules as validate
 
 
 def snap():

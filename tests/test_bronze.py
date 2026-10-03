@@ -7,8 +7,7 @@ import threading
 
 import pytest
 
-from critical_buildings import paths
-from critical_buildings import sources
+from critical_buildings import paths, sources
 
 
 @pytest.fixture
@@ -126,3 +125,27 @@ def test_all_manifests_lists_the_latest_snapshot_of_each_source(isolated_paths, 
     fetch(base)
     ms = sources.all_manifests()
     assert [m["source"] for m in ms] == ["dfe_gias"] and json.dumps(ms)
+
+
+# ------------------------------------------------------------------ conformed tables are reused when only unrelated sources changed
+def _fake_snapshot(source, snapshot, sha, filename="data.csv"):
+    d = paths.bronze_source_dir(source) / snapshot
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "_manifest.json").write_text(json.dumps({"files": [{"name": filename, "sha256": sha, "bytes": 1}]}))
+    (paths.bronze_source_dir(source) / "LATEST.json").write_text(json.dumps({"snapshot": snapshot}))
+
+
+def test_a_conformed_table_is_reused_unless_its_own_sources_changed(isolated_paths):
+    _fake_snapshot("cqc_hsca", "2026-01-01", "aaa")
+    _fake_snapshot("dfe_gias", "2026-01-01", "111")
+    inputs = [("cqc_hsca", None)]
+    assert paths.conformed_lookup("a", "t.parquet", inputs) is None
+    (paths.silver_conformed_dir("a") / "t.parquet").write_text("table")
+    paths.conformed_stamp("a", "t.parquet", inputs)
+    first_dir = paths.silver_conformed_dir("a")
+    _fake_snapshot("dfe_gias", "2026-02-01", "222")                      # an unrelated source is refreshed: new build folder
+    assert paths.silver_conformed_dir("a") != first_dir
+    reused = paths.conformed_lookup("a", "t.parquet", inputs)
+    assert reused is not None and reused.read_text() == "table" and reused.parent == paths.silver_conformed_dir("a")
+    _fake_snapshot("cqc_hsca", "2026-02-01", "bbb")                      # the table's own source changes: must rebuild
+    assert paths.conformed_lookup("a", "t.parquet", inputs) is None

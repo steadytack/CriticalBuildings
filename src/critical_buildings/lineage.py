@@ -10,8 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from critical_buildings import __version__, paths
-from critical_buildings import sources
+from critical_buildings import __version__, paths, sources
 
 VOLATILE = ["Run Date", "Last Edit Date", "Rule Version", "Run ID"]
 
@@ -56,7 +55,8 @@ def bronze_inputs():
 
 
 def build_lineage(ctx, rules, silver_key, silver_reused, gold, dest, deliverables, settings_hash, area_hash):
-    buildings_csv = Path(dest) / "critical_buildings.csv"
+    from critical_buildings.publish import find_output
+    buildings_csv = find_output(dest, "buildings")
     df = gold.df[~gold.df.Excluded]
     changes = {} if gold.changes is None else gold.changes.groupby("Change").size().to_dict()
     return {

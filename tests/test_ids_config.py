@@ -2,10 +2,10 @@
 import geopandas as gpd
 import pandas as pd
 import pytest
+from helpers import square
 
 from critical_buildings import config
 from critical_buildings.gold import steps
-from helpers import square
 
 
 def recs_of(*rows):
@@ -119,3 +119,47 @@ def test_area_files():
     assert area["osm_boundary"]["ref_gss"] == "E10000029" and area["os_grid_squares"] == ["tl", "tm", "tg"]
     with pytest.raises(SystemExit, match="Unknown area"):
         config.load_area("atlantis")
+
+
+# ------------------------------------------------------------------ editing thresholds keeps the file's comments
+def test_settings_edit_changes_only_the_named_value_and_keeps_comments(tmp_path, monkeypatch):
+    import shutil
+    copy = tmp_path / "settings.yml"
+    shutil.copy(config.SETTINGS_FILE, copy)
+    monkeypatch.setattr(config, "SETTINGS_FILE", copy)
+    config._cached.cache_clear()
+    before = copy.read_text(encoding="utf-8")
+    try:
+        done = config.save_settings({("merge", "point_distance_m"): 30, ("quality", "band_high_min"): 80})
+        assert [(s, k, o, n) for s, k, o, n in done] == [("merge", "point_distance_m", "25", "30"), ("quality", "band_high_min", "75", "80")]
+        after = copy.read_text(encoding="utf-8")
+        assert config.get().merge.point_distance_m == 30 and config.get().quality.band_high_min == 80
+        assert len(after.splitlines()) == len(before.splitlines())
+        assert "# OS and OSM features this close (metres) may be the same building" in after
+        changed = [i for i, (a, b) in enumerate(zip(before.splitlines(), after.splitlines())) if a != b]
+        assert len(changed) == 2
+    finally:
+        monkeypatch.undo()
+        config._cached.cache_clear()
+
+
+def test_settings_edit_that_breaks_validation_is_rolled_back(tmp_path, monkeypatch):
+    import shutil
+    copy = tmp_path / "settings.yml"
+    shutil.copy(config.SETTINGS_FILE, copy)
+    monkeypatch.setattr(config, "SETTINGS_FILE", copy)
+    config._cached.cache_clear()
+    before = copy.read_text(encoding="utf-8")
+    try:
+        with pytest.raises(ValueError, match="band_medium_min"):
+            config.save_settings({("quality", "band_medium_min"): 90})        # not lower than band_high_min
+        assert copy.read_text(encoding="utf-8") == before
+    finally:
+        monkeypatch.undo()
+        config._cached.cache_clear()
+
+
+def test_editable_settings_lists_single_numbers_with_their_help_text():
+    items = {(i["section"], i["key"]): i for i in config.editable_settings()}
+    assert items[("merge", "point_distance_m")]["value"] == 25 and "same building" in items[("merge", "point_distance_m")]["help"]
+    assert ("merge", "point_distance_by_type") not in items and ("matching", "loose_categories") not in items

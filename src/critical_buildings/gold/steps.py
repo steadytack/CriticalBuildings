@@ -10,7 +10,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from critical_buildings import config, paths
+from critical_buildings import config, paths, progress
 from critical_buildings.gold import merge, roles
 from critical_buildings.gold import reference_match as refmatch
 from critical_buildings.gold import sites as sitelib
@@ -303,17 +303,28 @@ class GoldResult:
 
 def build(silver, rules, store, run_id, today, previous_buildings=None, area=paths.DEFAULT_AREA):
     """previous_buildings: the previous run's buildings table (strings), or None on a first run."""
-    log.info("merging ...")
+    progress.step("Merging OS buildings and OSM features into one record per building")
     recs = merge.merge(silver.osm, silver.os_, rules.priorities)
+    for source, n in recs.source.value_counts().items():
+        progress.note(f"records from {source}", int(n))
+    progress.step("Grouping buildings into sites")
     recs, sites_df = sitelib.assign_sites(recs, silver.site_cands)
-    log.info("matching authoritative sources (DfE / CQC / NHS ODS) ...")
+    progress.note("sites formed", len(sites_df))
+    progress.step("Matching against the registers (DfE, CQC, NHS ODS)")
     recs, sites_df, ref_gaps, ref_matches = refmatch.attach_reference(
         recs, sites_df, silver.ref, rules.tags, silver.boundary, silver.ref_all, silver.postcodes, area)
-    log.info("  %s reference records: %s matched to sites, %s added as new buildings",
-             len(silver.ref), ref_matches.ri.nunique(), len(ref_gaps))
+    progress.note("register records matched to a site", int(ref_matches.ri.nunique()))
+    progress.note("register records added as new buildings", len(ref_gaps))
+    progress.step("Assigning stable Building and Site IDs")
     recs, new_ids = assign_ids(recs, today, store, run_id)
     recs, sites_df = assign_site_ids(recs, sites_df, today, store, run_id)
+    progress.note("new building IDs", new_ids)
+    progress.step("Assigning building roles, applying decisions and scoring quality")
     recs = roles.assign_roles(recs, rules.role)
     df, sites_out = assemble(recs, sites_df, rules.label, today, store)
+    progress.note("buildings (before exclusions)", len(df))
+    progress.note("excluded by a decision", int(df.Excluded.sum()))
+    progress.step("Comparing with the previous run")
     changes = diff_runs(previous_buildings, df) if previous_buildings is not None else None
+    progress.note("changes vs previous run", "no previous run" if changes is None else len(changes))
     return GoldResult(df, sites_out, sites_df, changes, new_ids, ref_gaps, ref_matches)

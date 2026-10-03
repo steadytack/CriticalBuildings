@@ -9,17 +9,25 @@ from pathlib import Path
 
 import pandas as pd
 
+from critical_buildings.dictionary import SLIM_COLUMNS
+
 VOLATILE = ["Run Date", "Last Edit Date", "Rule Version", "Run ID"]
-FILES = {
-    "buildings": ("critical_buildings.csv", "Building ID"),
-    "sites": ("critical_sites.csv", "Site ID"),
-    "summary": ("critical_buildings_summary.csv", "Building ID"),
+FILES = {                      # name -> (file names, old layout last; sort key; columns to keep, or None for all)
+    "buildings": (("buildings.csv", "critical_buildings.csv"), "Building ID", None),
+    "sites": (("sites.csv", "critical_sites.csv"), "Site ID", None),
+    "summary": (("buildings.csv", "critical_buildings.csv"), "Building ID", SLIM_COLUMNS),   # the report's Summary sheet
 }
 
 
-def canonical_hash(csv_path, key, drop=VOLATILE):
+def first_existing(folder, names):
+    return next(Path(folder) / n for n in names if (Path(folder) / n).exists())
+
+
+def canonical_hash(csv_path, key, drop=VOLATILE, columns=None):
     """sha256 of a CSV after sorting by `key`, dropping volatile columns and fixing column order."""
     df = pd.read_csv(csv_path, dtype=str).fillna("")
+    if columns:
+        df = df[columns]
     df = df.drop(columns=[c for c in drop if c in df.columns])
     df = df.sort_values(key).reset_index(drop=True)
     df = df[sorted(df.columns)]
@@ -29,10 +37,11 @@ def canonical_hash(csv_path, key, drop=VOLATILE):
 def describe(outputs_dir):
     outputs_dir = Path(outputs_dir)
     out = {}
-    for name, (fname, key) in FILES.items():
-        digest, df = canonical_hash(outputs_dir / fname, key)
-        out[name] = {"file": fname, "rows": len(df), "columns": sorted(df.columns), "sha256": digest}
-    b = pd.read_csv(outputs_dir / FILES["buildings"][0], dtype=str).fillna("")
+    for name, (fnames, key, columns) in FILES.items():
+        path = first_existing(outputs_dir, fnames)
+        digest, df = canonical_hash(path, key, columns=columns)
+        out[name] = {"file": path.name, "rows": len(df), "columns": sorted(df.columns), "sha256": digest}
+    b = pd.read_csv(first_existing(outputs_dir, FILES["buildings"][0]), dtype=str).fillna("")
     out["counts"] = {
         "by_source": b["Source"].value_counts().sort_index().to_dict(),
         "by_verification": b["Verification"].value_counts().sort_index().to_dict(),

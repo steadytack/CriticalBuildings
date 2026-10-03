@@ -13,10 +13,10 @@ from pathlib import Path
 import pandas as pd
 
 from critical_buildings import paths
-from critical_buildings.control import ruleset as rs
-from critical_buildings.control import validate
+from critical_buildings.control import rules as rs
 
-MIGRATIONS = [(1, "schema.sql"), (2, "migrations/002_runs.sql"), (3, "migrations/003_registry_site.sql")]     # (schema version, file); applied in order
+MIGRATIONS = [(1, "schema.sql"), (2, "migrations/002_runs.sql"), (3, "migrations/003_registry_site.sql"),
+              (4, "migrations/004_run_stage.sql")]     # (schema version, file); applied in order
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 
 RULE_COLS = ["rule_ref", "primary_category", "building_type", "importance", "importance_driver", "priority", "active", "notes"]
@@ -90,6 +90,13 @@ class ControlStore:
                    json.dumps(new) if new is not None else None, reason))
 
     # ------------------------------------------------------------ reads
+    def log_setting_change(self, user, setting, old, new, reason):
+        """Audit entry for an edit to settings.yml (made from the UI)."""
+        if not reason or not reason.strip():
+            raise ControlError("Please give a reason for the change.")
+        with self.conn() as c:
+            self._log(c, user, "settings.yml", setting, "update", old, new, reason.strip())
+
     def table_df(self, table, order=None):
         with self.conn() as c:
             return pd.read_sql_query(f"SELECT * FROM {table}" + (f" ORDER BY {order}" if order else ""), c)
@@ -121,8 +128,8 @@ class ControlStore:
     def ruleset(self, version_id=None):
         """The pipeline's view of a published rule set (latest by default), with validation results attached."""
         vid, snap = self.get_version(version_id)
-        errors, warnings, tags = validate.check_rules(snap)
-        errors = errors + validate.check_role_settings(snap) + validate.check_reference_mapping(snap)
+        errors, warnings, tags = rs.check_rules(snap)
+        errors = errors + rs.check_role_settings(snap) + rs.check_reference_mapping(snap)
         role = snap["role"]
         return rs.RuleSet(
             version_id=vid, label=rs.version_label(vid, snap), snapshot=snap, tags=tags,
@@ -220,7 +227,7 @@ class ControlStore:
         if not reason or not str(reason).strip():
             raise ControlError("A reason is required to publish.")
         snap = self.draft_snapshot()
-        errors, _ = validate.check_all(snap)
+        errors, _ = rs.check_all(snap)
         if errors:
             raise ControlError("Cannot publish - fix these first:\n  " + "\n  ".join(errors))
         with self.conn() as c:
@@ -270,7 +277,7 @@ class ControlStore:
     def save_building_registry(self, df, run_id):
         """df columns: building_id, os_key, osm_key, created, wkt. New IDs are inserted, seen ones refreshed,
         IDs absent from this run are marked retired (never deleted)."""
-        ids = set(df["building_id"])
+        set(df["building_id"])
         with self.conn() as c:
             for r in df.itertuples(index=False):
                 os_key = r.os_key if isinstance(r.os_key, str) else None
@@ -323,6 +330,19 @@ class ControlStore:
         with self.conn() as c:
             row = c.execute("SELECT * FROM run WHERE run_id = ?", (run_id,)).fetchone()
         return dict(row) if row else None
+
+    def save_stage(self, run_id, stage, **fields):
+        """Insert or update what one stage of a run did (status, timing, counts)."""
+        with self.conn() as c:
+            cols = ["run_id", "stage", *fields]
+            sets = ", ".join(f"{k} = excluded.{k}" for k in fields)
+            c.execute(f"INSERT INTO run_stage ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "
+                      f"ON CONFLICT(run_id, stage) DO UPDATE SET {sets}", (run_id, stage, *fields.values()))
+
+    def stages_df(self, run_id=None):
+        with self.conn() as c:
+            q = "SELECT * FROM run_stage" + (" WHERE run_id = ?" if run_id else "") + " ORDER BY started_at"
+            return pd.read_sql_query(q, c, params=(run_id,) if run_id else ())
 
     def runs_df(self, area=None):
         with self.conn() as c:

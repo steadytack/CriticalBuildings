@@ -8,9 +8,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import golden_utils
 import pytest
 
-import golden_utils
 from critical_buildings import paths
 
 REPO = Path(__file__).resolve().parents[1]

@@ -1,12 +1,10 @@
 """UI logic that has nothing to do with Streamlit (so it can be tested): grid <-> rows, proposed snapshots, plain-English diffs."""
 import copy
 import math
-import subprocess
-import sys
 
 import pandas as pd
 
-from critical_buildings.control import validate
+from critical_buildings.control import rules as validate
 
 
 def _missing(v):
@@ -115,7 +113,6 @@ def diff_snapshots(old, new):
         for k, label in (("tag", "tag"), ("source", "source"), ("active", "active"), ("notes", "notes")):
             if to[i][k] != tn[i][k]:
                 lines.append(f"{_rule_label(rn, tn[i]['rule_ref'])}: tag {to[i]['tag'] or '(manual)'}: {label} {to[i][k]!r} -> {tn[i][k]!r}")
-    mo, mn = _by(old["reference_mapping"], "sort_order"), _by(new["reference_mapping"], "sort_order")
     key = lambda m: (m["source"], m["field"], m["match"], m["value"], m["building_type"], m["active"])      # noqa: E731
     so, sn = {key(m) for m in old["reference_mapping"]}, {key(m) for m in new["reference_mapping"]}
     for m in sorted(sn - so):
@@ -138,27 +135,7 @@ def diff_snapshots(old, new):
 
 
 # ------------------------------------------------------------------ running the pipeline from the UI
-NOISE = ("gdalplugins", "The specified procedure could not be found")     # harmless system-GDAL probing on some PCs
 SANITY_TOLERANCE = 0.10
-
-
-def cli_command(*args):
-    """The command line for `python -m critical_buildings <args>`, using the interpreter running the UI."""
-    return [sys.executable, "-m", "critical_buildings", *[str(a) for a in args]]
-
-
-def clean_output(text):
-    """Command output without the harmless GDAL plugin noise lines."""
-    keep = [ln for ln in text.splitlines() if not any(n in ln for n in NOISE)]
-    return "\n".join(ln for i, ln in enumerate(keep) if ln.strip() or (i and keep[i - 1].strip()))
-
-
-def run_cli(*args, cwd=None):
-    """Run a pipeline command to completion. Returns (ok, output text)."""
-    from critical_buildings import paths
-    done = subprocess.run(cli_command(*args), cwd=cwd or paths.ROOT, capture_output=True, text=True, encoding="utf-8",
-                          errors="replace")
-    return done.returncode == 0, clean_output(done.stdout + ("\n" + done.stderr if done.stderr else "")).strip()
 
 
 def sanity_problems(runs_df, tolerance=SANITY_TOLERANCE):

@@ -3,8 +3,7 @@
     check                        validate rules, settings and data, in plain English
     fetch [--only osm,dfe ...]   download source data into new immutable bronze snapshots
     run                          build the dataset (silver -> gold -> publish)
-    control init|dump|versions|import-overrides|publish    manage the rules store
-    export-excel                 a read-only Excel view of the published rules
+    control dump|versions|publish    manage the rules store
     runs | release | archive | restore    run history, immutable releases, retention
     ui                           the rules editor in your browser
 """
@@ -69,18 +68,6 @@ def cmd_runs(args):
         print()
         print("Releases:")
         print(rel[["release", "area", "run_id", "released_at", "released_by"]].to_string(index=False))
-    return 0
-
-
-def cmd_export_excel(args):
-    from critical_buildings.control import excel_view
-    from critical_buildings.control.store import ControlError, ControlStore
-    try:
-        out = excel_view.export(ControlStore(), args.out, args.version)
-    except ControlError as e:
-        print(e)
-        return 1
-    print("wrote (read-only view):", out)
     return 0
 
 
@@ -149,25 +136,17 @@ def cmd_release(args):
 
 
 def cmd_control(args):
-    from pathlib import Path
 
-    from critical_buildings.control import dumps, migrate
-    from critical_buildings.control import ruleset as rs
-    from critical_buildings.control.store import ControlError, ControlStore, current_user
+    from critical_buildings.control import dumps
+    from critical_buildings.control.store import (
+        ControlError,
+        ControlStore,
+        current_user,
+    )
     store = ControlStore()
     try:
-        if args.action == "init":
-            if not args.from_excel:
-                print("control init needs --from-excel <rules workbook.xlsx>")
-                return 2
-            print("imported:", migrate.import_workbook(store, Path(args.from_excel)))
-            if args.overrides:
-                print("overrides:", migrate.import_overrides_csv(store, Path(args.overrides)))
-            vid = store.publish(args.user or current_user(), "Initial import from the Excel workbook")
-            dumps.write_dumps(store)
-            print("published version", vid, rs.version_label(vid, store.get_version(vid)[1]))
-        elif args.action == "dump":
-            print("wrote:", ", ".join(dumps.write_dumps(store)))
+        if args.action == "dump":
+            print("wrote:", dumps.write_dumps(store))
         elif args.action == "versions":
             print(store.versions_df().to_string(index=False))
             print("unpublished changes:", store.has_unpublished_changes())
@@ -175,10 +154,6 @@ def cmd_control(args):
             vid = store.publish(args.user or current_user(), args.reason or "")
             dumps.write_dumps(store)
             print("published version", vid)
-        elif args.action == "import-overrides":
-            n = migrate.import_overrides_csv(store, Path(args.file), reason=args.reason or "Imported overrides")
-            dumps.write_dumps(store)
-            print(f"imported {n} overrides")
     except ControlError as e:
         print(e)
         return 1
@@ -207,9 +182,6 @@ def main(argv=None):
     r.add_argument("--no-reuse", action="store_true", help="rebuild silver even if a matching build is cached")
     r.add_argument("--rules-version", type=int, help="use this published rule set number instead of the latest")
     add("runs", cmd_runs, "list runs and releases")
-    x = add("export-excel", cmd_export_excel, "write a read-only Excel view of the published rules")
-    x.add_argument("--version", type=int, help="rule set version number (default: latest)")
-    x.add_argument("--out", help="output .xlsx path")
     u = add("ui", cmd_ui, "open the rules editor in your browser")
     u.add_argument("--port", type=int, default=8501)
     u.add_argument("--headless", action="store_true", help="do not open a browser window")
@@ -223,10 +195,7 @@ def main(argv=None):
     rl.add_argument("--run", help="run id (default: the latest successful run)")
     rl.add_argument("--notes")
     c = sub.add_parser("control", help="manage the rules store")
-    c.add_argument("action", choices=["init", "dump", "versions", "publish", "import-overrides"])
-    c.add_argument("--from-excel")
-    c.add_argument("--overrides")
-    c.add_argument("--file")
+    c.add_argument("action", choices=["dump", "versions", "publish"])
     c.add_argument("--reason")
     c.add_argument("--user")
     c.set_defaults(fn=cmd_control)

@@ -1,11 +1,13 @@
 """Publish stage: the delivered files for one run (GeoPackage/CSV outputs, QA workbook and map).
 """
 import logging
+from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 
 from critical_buildings import dictionary as docs
+from critical_buildings import progress
 
 log = logging.getLogger(__name__)
 
@@ -48,8 +50,8 @@ def suggest_verification_action(verification, note):
     return "No register recognises this site. Check it is still open (e.g. NHS / CQC / Google); if not, exclude the site."
 
 
-def write_reports(df, changes, version, today, new_ids, os_total, out, sites=None, ref=None, ref_gaps=None,
-                  sites_all=None):
+def write_reports(xw, df, changes, version, today, new_ids, os_total, sites=None, ref=None, ref_gaps=None):
+    """Add the run-summary sheets to the open workbook `xw`."""
     live = df[~df.Excluded]
     summary = pd.DataFrame([
         ("Run date", str(today)), ("Rule version", version), ("Buildings in dataset", len(live)),
@@ -77,36 +79,31 @@ def write_reports(df, changes, version, today, new_ids, os_total, out, sites=Non
                                                  "Source Feature ID", "Confidence"]].copy()
     review.insert(6, "Suggested Action", review["Review Reason"].map(suggest_action))
     review = review.sort_values(["Review Status", "Building Type"], ascending=[False, True])
-    with pd.ExcelWriter(out / "run_summary.xlsx") as xw:
-        summary.to_excel(xw, sheet_name="Run summary", index=False)
-        by_type.to_excel(xw, sheet_name="Coverage by type", index=False)
-        by_conf.to_excel(xw, sheet_name="Confidence", index=False)
-        (live.groupby(["Primary Category", "Building Role"]).size().unstack(fill_value=0).reset_index()
-         ).to_excel(xw, sheet_name="Building roles", index=False)
-        if sites is not None and ref is not None:
-            cov = (sites.drop(columns="geometry").groupby(["Site Type", "Verification"]).size().unstack(fill_value=0))
-            cov["Authoritative records"] = ref.groupby("building_type").size().reindex(cov.index).fillna(0).astype(int)
-            cov.reset_index().to_excel(xw, sheet_name="Authoritative coverage", index=False)
-            ref_gaps[["ref_source", "ref_id", "ref_name", "building_type", "detail", "postcode", "capacity",
-                      "capacity_unit"]].to_excel(xw, sheet_name="Authoritative gaps added", index=False)
-            unv = sites[sites["Verification"].isin(["Unverified", "Closed per register"])].drop(columns="geometry")[
-                ["Site ID", "Site Name", "Site Type", "Verification", "Verification Note", "Buildings in Site",
-                 "Site Method"]].copy()
-            unv.insert(5, "Suggested Action", [suggest_verification_action(v, n) for v, n in
-                                               zip(unv["Verification"], unv["Verification Note"])])
-            unv.sort_values(["Verification", "Site Type", "Site Name"]).to_excel(
-                xw, sheet_name="Unverified sites", index=False)
-        if sites is not None:
-            st = (sites.drop(columns="geometry").groupby(["Primary Category", "Site Type", "Site Method"])
-                  .agg(Sites=("Site ID", "count"), Buildings=("Buildings in Site", "sum")).reset_index())
-            st.to_excel(xw, sheet_name="Sites by type", index=False)
-        review.to_excel(xw, sheet_name="Review queue", index=False)
-        (changes if changes is not None else pd.DataFrame({"Note": ["First run - no previous output to compare"]})
-         ).to_excel(xw, sheet_name="Changes vs previous", index=False)
-        for ws in xw.book.worksheets:
-            for col in ws.columns:
-                ws.column_dimensions[col[0].column_letter].width = min(
-                    60, max(12, max(len(str(c.value or "")) for c in col[:200]) + 2))
+    summary.to_excel(xw, sheet_name="Run summary", index=False)
+    by_type.to_excel(xw, sheet_name="Coverage by type", index=False)
+    by_conf.to_excel(xw, sheet_name="Confidence", index=False)
+    (live.groupby(["Primary Category", "Building Role"]).size().unstack(fill_value=0).reset_index()
+     ).to_excel(xw, sheet_name="Building roles", index=False)
+    if sites is not None and ref is not None:
+        cov = (sites.drop(columns="geometry").groupby(["Site Type", "Verification"]).size().unstack(fill_value=0))
+        cov["Authoritative records"] = ref.groupby("building_type").size().reindex(cov.index).fillna(0).astype(int)
+        cov.reset_index().to_excel(xw, sheet_name="Authoritative coverage", index=False)
+        ref_gaps[["ref_source", "ref_id", "ref_name", "building_type", "detail", "postcode", "capacity",
+                  "capacity_unit"]].to_excel(xw, sheet_name="Authoritative gaps added", index=False)
+        unv = sites[sites["Verification"].isin(["Unverified", "Closed per register"])].drop(columns="geometry")[
+            ["Site ID", "Site Name", "Site Type", "Verification", "Verification Note", "Buildings in Site",
+             "Site Method"]].copy()
+        unv.insert(5, "Suggested Action", [suggest_verification_action(v, n) for v, n in
+                                           zip(unv["Verification"], unv["Verification Note"])])
+        unv.sort_values(["Verification", "Site Type", "Site Name"]).to_excel(
+            xw, sheet_name="Unverified sites", index=False)
+    if sites is not None:
+        st = (sites.drop(columns="geometry").groupby(["Primary Category", "Site Type", "Site Method"])
+              .agg(Sites=("Site ID", "count"), Buildings=("Buildings in Site", "sum")).reset_index())
+        st.to_excel(xw, sheet_name="Sites by type", index=False)
+    review.to_excel(xw, sheet_name="Review queue", index=False)
+    (changes if changes is not None else pd.DataFrame({"Note": ["First run - no previous output to compare"]})
+     ).to_excel(xw, sheet_name="Changes vs previous", index=False)
     return summary
 
 
@@ -143,23 +140,38 @@ def write_map(gdf, path):
 # Writing the delivered files
 # ====================================================================================================
 
-# Files every run folder contains (used by release/archive and the regression test)
-DELIVERABLES = ["critical_buildings.gpkg", "critical_buildings.csv", "critical_sites.gpkg", "critical_sites.csv",
-                "critical_buildings_summary.csv", "critical_buildings_data_dictionary.xlsx", "ATTRIBUTION.txt",
-                "run_summary.xlsx", "qa_map.html"]
+# What every run folder contains (used by release/archive and the regression test). Older runs used longer file names
+# (critical_buildings.csv, critical_sites.csv, critical_buildings.gpkg ...); find_output reads both.
+DELIVERABLES = ["dataset.gpkg", "buildings.csv", "sites.csv", "report.xlsx", "ATTRIBUTION.txt"]
+OUTPUT_NAMES = {"buildings": ("buildings.csv", "critical_buildings.csv"), "sites": ("sites.csv", "critical_sites.csv"),
+                "gpkg": ("dataset.gpkg", "critical_buildings.gpkg")}
+
+
+def find_output(folder, kind):
+    """Path of one output ('buildings', 'sites' or 'gpkg') in a run or release folder, in either file layout; None if absent."""
+    for name in OUTPUT_NAMES[kind]:
+        if (Path(folder) / name).exists():
+            return Path(folder) / name
+    return None
 
 
 def write_outputs(gold, silver, dest, rule_version, today):
     df, sites_out = gold.df, gold.sites_out
+    live = df[~df.Excluded]
     gdf = gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df["Geom"], crs=27700), crs=27700)
     final = gdf[~gdf.Excluded].drop(columns=["Geom"])   # the layer's own geometry replaces the WKT text column (CSV keeps it)
-    final.to_file(dest / "critical_buildings.gpkg", layer="critical_buildings", driver="GPKG")
-    df[~df.Excluded].to_csv(dest / "critical_buildings.csv", index=False)
-    sites_out.to_file(dest / "critical_sites.gpkg", layer="critical_sites", driver="GPKG")
-    sites_out.drop(columns="geometry").to_csv(dest / "critical_sites.csv", index=False)
-    write_reports(df, gold.changes, rule_version, today, gold.new_ids, silver.os_total, dest, sites_out,
-                     silver.ref, gold.ref_gaps, gold.sites_df)
-    write_map(final, dest / "qa_map.html")
-    docs.write_docs(df[~df.Excluded], sites_out, rule_version, today, gold.changes, dest)
-    log.info("wrote %s buildings in %s sites to %s", len(final), len(sites_out), dest)
+    progress.step("Writing the GeoPackage (buildings and sites layers) and the CSV files")
+    final.to_file(dest / "dataset.gpkg", layer="buildings", driver="GPKG")
+    sites_out.to_file(dest / "dataset.gpkg", layer="sites", driver="GPKG", mode="a")
+    live.to_csv(dest / "buildings.csv", index=False)
+    sites_out.drop(columns="geometry").to_csv(dest / "sites.csv", index=False)
+    progress.step("Writing the report workbook (summary, review queue, data dictionary)")
+    with pd.ExcelWriter(dest / "report.xlsx") as xw:
+        live[docs.SLIM_COLUMNS].to_excel(xw, sheet_name="Summary", index=False)
+        write_reports(xw, df, gold.changes, rule_version, today, gold.new_ids, silver.os_total, sites_out,
+                      silver.ref, gold.ref_gaps)
+        docs.write_docs(xw, live, sites_out, rule_version, today, gold.changes, dest)
+        docs.style_workbook(xw)
+    progress.note("buildings written", len(final))
+    progress.note("sites written", len(sites_out))
     return len(final), len(sites_out)

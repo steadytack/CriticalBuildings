@@ -4,6 +4,34 @@
 # control store (python -m critical_buildings ui). These are technical tuning values; change them deliberately and
 # record why in your commit message - they alter the output. `python -m critical_buildings check` validates this file.
 
+product:                                    # wording used by the UI and CLI, so the shell is not hard-wired to one dataset
+  name: Critical Buildings
+  entity: building                          # what one row of the main output is
+  id_column: Building ID
+  area_label: Area
+
+pipeline:                                   # the stages of a run, in order; the UI draws these and shows what each did
+  stages:
+    - id: fetch
+      label: Fetch sources
+      layer: bronze
+      description: Download each source into a new dated snapshot (only stored if the data changed). Run separately with `fetch`.
+    - id: silver
+      label: Clean and classify
+      layer: silver
+      function: critical_buildings.pipeline:silver_stage
+      description: Clip to the area, apply the rules to OSM and OS features, load and map the registers. Cached by input hash.
+    - id: gold
+      label: Match, group, identify
+      layer: gold
+      function: critical_buildings.pipeline:gold_stage
+      description: Merge OS and OSM, group buildings into sites, check against the registers, assign stable IDs and roles, score quality.
+    - id: publish
+      label: Write deliverables
+      layer: gold
+      function: critical_buildings.pipeline:publish_stage
+      description: Write the files, report, data dictionary and lineage into this run's folder.
+
 matching:                                   # shared by merge, sites and reference matching
   # Categories where OS and OSM name the sub-types differently (e.g. 'Primary Education' vs school=primary), so a
   # match only needs the same category. In every other category the building type must also agree.

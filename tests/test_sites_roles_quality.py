@@ -2,11 +2,10 @@
 import geopandas as gpd
 import pandas as pd
 import pytest
+from helpers import point, square
 from shapely.geometry import box
 
-from critical_buildings.gold import steps
-from critical_buildings.gold import roles, sites
-from helpers import point, square
+from critical_buildings.gold import roles, sites, steps
 
 EDU = dict(category="Education", building_type="Primary School", importance="Medium")
 FIRE = dict(category="Emergency", building_type="Fire Station", importance="High")

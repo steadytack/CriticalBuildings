@@ -1,2 +1,0 @@
-version_id,created_at,created_by,approved_by,reason,content_hash
-1,2026-10-01T13:47:08+00:00,migration,,"Initial import from the Excel rules workbook (rules, role settings, reference mapping)",cdb51159a41ddf9e2a23bdfe592b81f62529e4705f43aed2ffc1e03b051942e5

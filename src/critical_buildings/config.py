@@ -7,6 +7,7 @@
 import copy
 import hashlib
 import json
+import re
 from contextlib import contextmanager
 from functools import lru_cache
 from types import SimpleNamespace
@@ -108,3 +109,53 @@ def validate():
     if q.get("band_medium_min", 0) >= q.get("band_high_min", 100):
         problems.append("settings.yml: quality.band_medium_min must be lower than quality.band_high_min")
     return problems
+
+
+# ------------------------------------------------------------------ editing thresholds from the UI (keeps the file's comments)
+EDITABLE_SECTIONS = ("merge", "sites", "reference_match", "quality", "retention")
+_NUMBER_LINE = re.compile(r"^  (?P<key>[A-Za-z_]\w*):[ \t]+(?P<val>-?\d+(?:\.\d+)?)(?P<rest>[ \t]*(?:#.*)?)$")
+
+
+def editable_settings():
+    """Single numeric thresholds a person may change: [{section, key, value, help}] in file order."""
+    out, section = [], None
+    for line in SETTINGS_FILE.read_text(encoding="utf-8").splitlines():
+        top = re.match(r"^([A-Za-z_]\w*):", line)
+        if top:
+            section = top.group(1)
+        m = _NUMBER_LINE.match(line)
+        if m and section in EDITABLE_SECTIONS:
+            raw = m.group("val")
+            out.append({"section": section, "key": m.group("key"), "value": float(raw) if "." in raw else int(raw),
+                        "help": m.group("rest").strip().lstrip("#").strip()})
+    return out
+
+
+def save_settings(changes):
+    """changes: {(section, key): new number}. Rewrites only those values, then validates; restores the file on a problem.
+    Returns [(section, key, old, new)] for what actually changed."""
+    original = SETTINGS_FILE.read_text(encoding="utf-8")
+    lines, section, done = original.split("\n"), None, []
+    for i, line in enumerate(lines):
+        top = re.match(r"^([A-Za-z_]\w*):", line)
+        if top:
+            section = top.group(1)
+        m = _NUMBER_LINE.match(line)
+        if not m or (section, m.group("key")) not in changes:
+            continue
+        old_raw, new = m.group("val"), changes[(section, m.group("key"))]
+        new_raw = str(new)
+        if old_raw == new_raw or float(old_raw) == float(new):
+            continue
+        rest = m.group("rest")
+        spaces = max(1, len(rest) - len(rest.lstrip()) - (len(new_raw) - len(old_raw))) if rest.strip() else 0
+        lines[i] = f"{line[:m.start('val')]}{new_raw}{' ' * spaces}{rest.lstrip()}"
+        done.append((section, m.group("key"), old_raw, new_raw))
+    SETTINGS_FILE.write_text("\n".join(lines), encoding="utf-8")
+    _cached.cache_clear()
+    problems = validate()
+    if problems:
+        SETTINGS_FILE.write_text(original, encoding="utf-8")
+        _cached.cache_clear()
+        raise ValueError("; ".join(problems))
+    return done

@@ -14,7 +14,7 @@ are conventions the team should assign.
 | **Consumer** | Uses the published files. | Reads the summary CSV and data dictionary. |
 
 The UI records whatever name is typed in the sidebar; it does **not** authenticate. If you need proof of identity, put the
-repository behind your organisation's access controls and review `governed/dumps/` changes in git (below).
+repository behind your organisation's access controls and review `governed/control_dump.txt` changes in git (below).
 
 ## Changing the rules
 
@@ -23,7 +23,7 @@ repository behind your organisation's access controls and review `governed/dumps
 2. Edits go to a **draft**. The pipeline never sees a draft.
 3. **Publish** validates the draft (plain-English checks) and freezes it as a numbered, immutable version with a content
    hash. Optionally record who approved it.
-4. Publishing rewrites `governed/dumps/*.csv`. **Commit those and `governed/control.db`** so reviewers see the change as an ordinary
+4. Publishing rewrites `governed/control_dump.txt`. **Commit it and `governed/control.db`** so reviewers see the change as an ordinary
    git diff and can challenge it in a pull request.
 5. The next `run` uses the latest published version and stamps it on every record (`Rule Version`, e.g. `v3-a1b2c3`).
 
@@ -33,7 +33,7 @@ Any historic run can be explained by its rule version: `Rule Version` -> `rule_s
 
 Decisions about individual buildings (accept a flagged match, exclude a closed site, correct a type, verify manually) are
 stored in the control store with who decided and when, and applied after the automatic logic on every run. They survive
-reruns. They are also in `governed/dumps/override.csv` for review.
+reruns. They are also in the `override` section of `governed/control_dump.txt` for review.
 
 ## Quality checks that run automatically
 
@@ -98,7 +98,7 @@ non-coders no validation or guard rails, and the requirement was a simple UI.
 **Decision.** Store rules, role settings, register mapping, human decisions, identity registries and the run registry in one
 SQLite file (`governed/control.db`), edited through a Streamlit UI. Rules have a **draft** and immutable **published
 versions**; every edit needs a user and a reason and is audited. The pipeline only reads published versions. Every save and
-publish also writes deterministic CSV copies to `governed/dumps/` so changes can be reviewed as ordinary git diffs.
+publish also writes a deterministic text copy to `governed/control_dump.txt` so changes can be reviewed as ordinary git diffs.
 All SQL lives in `control/store.py`.
 
 **Consequences.**

@@ -11,6 +11,7 @@ Human-governed inputs: settings.yml and governed/ (rules store, text dumps).
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 
 ROOT = Path(os.environ.get("CB_ROOT") or Path(__file__).resolve().parents[2])
@@ -84,3 +85,41 @@ def silver_conformed_dir(area=DEFAULT_AREA):
     d = SILVER / area / "conformed" / bronze_key(area)
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def inputs_key(area, inputs):
+    """Hash of just the bronze files a conformed table is made from.
+
+    inputs: [(source, filename or None)]; None means every file of that source's latest snapshot."""
+    parts = []
+    for source, filename in inputs:
+        snap = bronze_snapshot(source, area if source == "osm_overpass" else None)
+        files = json.loads((snap / "_manifest.json").read_text(encoding="utf-8"))["files"]
+        parts += [f"{source}/{f['name']}:{f['sha256']}" for f in sorted(files, key=lambda f: f["name"]) if filename in (None, f["name"])]
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()[:12]
+
+
+def conformed_lookup(area, name, inputs):
+    """Path of a conformed table if it already exists for these inputs, else None.
+
+    A table is made once per bronze snapshot of the sources it reads, not once per run: when an unrelated source was
+    refreshed (say OpenStreetMap while the CQC spreadsheet is unchanged) the table from an earlier build is copied into the
+    current build folder instead of being rebuilt (the CQC spreadsheet alone takes minutes to read)."""
+    target = silver_conformed_dir(area) / name
+    if target.exists():
+        return target
+    key = inputs_key(area, inputs)
+    others = sorted((p for p in (SILVER / area / "conformed").glob("*") if p.is_dir() and p != target.parent),
+                    key=lambda p: p.stat().st_mtime, reverse=True)
+    for d in others:
+        stamp = d / (name + ".inputs")
+        if (d / name).exists() and stamp.exists() and stamp.read_text(encoding="utf-8").strip() == key:
+            shutil.copy2(d / name, target)
+            (target.parent / (name + ".inputs")).write_text(key, encoding="utf-8")
+            return target
+    return None
+
+
+def conformed_stamp(area, name, inputs):
+    """Record which inputs a freshly built conformed table was made from (so conformed_lookup can reuse it later)."""
+    (silver_conformed_dir(area) / (name + ".inputs")).write_text(inputs_key(area, inputs), encoding="utf-8")

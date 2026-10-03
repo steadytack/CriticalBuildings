@@ -14,14 +14,13 @@ Each run writes a folder with these files (a *release* is a permanent copy of on
 
 | File | What it is |
 |---|---|
-| `critical_buildings_summary.csv` | **Start here.** One row per building, 17 easy columns (type, importance, role, site, verification, quality, lat/lon). |
-| `critical_buildings.gpkg` / `.csv` | The full dataset, one row per building (74 columns). GeoPackage for GIS tools, CSV for everything else. |
-| `critical_sites.gpkg` / `.csv` | One row per **site** (a school, a hospital, an airfield ...), with the site outline. |
-| `critical_buildings_data_dictionary.xlsx` | What every column means, allowed values, the quality score formula, sources and licences, known limitations. |
-| `run_summary.xlsx` | QA workbook: coverage by type, items needing review, sites no register recognises, changes since the last run. |
-| `qa_map.html` | Interactive map. Open it in a browser. |
+| `report.xlsx` | **Start here.** One workbook: a *Summary* sheet (one row per building, 17 easy columns), QA sheets (coverage by type, review queue, sites no register recognises, changes since the last run) and the data dictionary (what every column means, the quality score formula, sources, licences, known limitations). |
+| `dataset.gpkg` | The full dataset for GIS tools: layer `buildings` (one row per building, 74 columns) and layer `sites` (one row per site with its outline). |
+| `buildings.csv`, `sites.csv` | The same two tables as CSV for everyone else. |
 | `ATTRIBUTION.txt` | The credit lines to include when you share the data. |
 | `lineage.json` | Exactly what produced this run: input files (checksums), rule version, settings, code version. |
+
+The interactive QA map is no longer stored with every run: draw it from the **Data** tab of the UI when you want it.
 
 ## How it works
 
@@ -72,40 +71,45 @@ The output is in `data/gold/suffolk/<run id>/`. The `data/` folder is not in git
 
 ## Everyday workflows
 
-**Change a rule** (analysts) - no code, no Excel needed:
+**Open the UI** (everyone):
 
 ```bash
-python -m critical_buildings ui         # opens the rules editor in your browser
+python -m critical_buildings ui         # opens in your browser
 ```
 
-Edit rules, role settings or the register mapping. The editor checks your edit in plain English, shows what it would
-change, and asks for a reason. *Save* writes to a draft; *Publish* freezes it as a numbered version. The next `run` uses it.
-See [the rules guide](docs/guide.md#rules).
-
-**Fetch, build and release from the UI:** the **Run** tab of the same editor has Fetch, Build and Release buttons, the check status and the run history (with a warning if the building count swings by more than 10%). The commands below do the same.
+| Tab | For |
+|---|---|
+| **Pipeline** | The pipeline drawn as a graph: sources, stages, releases, coloured by what the latest run did, with source freshness and each stage's counts and steps. |
+| **Run** | Fetch, build and release with live progress: which stage and step it is on, counts so far, warnings. A build keeps running if you reload the page. |
+| **Runs** | History, size over time, one run in detail (every step with timings), changes against the previous run, archive and tidy up. |
+| **Data** | What is on disk in each layer, with previews of any file and an on-demand QA map. |
+| **Lineage** | A run's inputs and outputs as a graph, and "why is this record the way it is?". |
+| **Quality** | Counts and charts for a run. |
+| **Settings** | The technical thresholds in `settings.yml`, edited with a reason. |
+| **Reference data** | The business rules, role settings, register mapping and review decisions. Edits go to a draft; *Publish* freezes a numbered version that the next build uses. See [the rules guide](docs/guide.md#rules). |
 
 **Refresh the data** (engineers): `fetch` then `run`. `fetch` only stores a new snapshot if the data changed.
 
-**Review flagged records:** open `run_summary.xlsx` (Review queue, Unverified sites) or the **Review & decisions** tab in
+**Review flagged records:** open `report.xlsx` (Review queue, Unverified sites sheets) or the **Review & decisions** tab in
 the editor. Decisions are saved against the building and survive reruns.
 
 **Share a version:** `python -m critical_buildings release v2026.10.0 --notes "Suffolk pilot"` copies the run into
 `data/published/suffolk/v2026.10.0/` (immutable, checksum-verified).
 
 **Tidy up old data:** `python -m critical_buildings archive` shows what could be archived (dry run);
-`archive --apply` does it; `restore` brings something back. Nothing a release depends on is ever touched. See [the run lifecycle](docs/guide.md#runs-releases-and-archiving).
+`archive --apply` does it; `restore` brings something back (the **Runs** tab does the same). Nothing a release depends on is ever touched. See [the run lifecycle](docs/guide.md#runs-releases-and-archiving).
 
-**Read the rules in Excel:** `python -m critical_buildings export-excel` writes a read-only workbook.
 
 ## What is in this repository
 
 ```
-settings.yml       settings you can tune: thresholds, areas, data sources (one file)
-governed/          control.db = the rules store (committed), dumps/ = text copies so rule changes show in git diffs
-src/critical_buildings/   the code: sources.py, silver/, gold/, publish.py (the layers), control/ (rules store), ui/ (editor), cli.py
+settings.yml       settings you can tune: thresholds, areas, data sources, the pipeline's stages (one file)
+governed/          control.db = the rules store (committed) and control_dump.txt = a text copy so rule changes show in git diffs
+src/critical_buildings/   the code: sources.py, silver.py, gold/, publish.py (the layers), progress.py (what a run reports),
+                   control/ (rules store), ui/ (the web UI), cli.py
 tests/             automated tests (unit + an end-to-end regression against a golden baseline)
 docs/              guide.md (how it works, rules, runs, lineage, contributing) and governance.md (roles, checks, licences, decisions)
-data/              (not in git)  bronze/ silver/ gold/ published/ archive/
+data/              (not in git)  bronze/ silver/ gold/ published/ archive/ logs/
 ```
 
 The original Excel rules workbook and the one-off migration scripts were removed from the working tree; they are in git
@@ -131,6 +135,6 @@ UPRN counts and the DESNZ/BUUK columns are reserved but not populated. The full 
 - **Lines like "Can't load requested DLL ... gdalplugins\gdal_*.dll" during a run:** a system-wide GDAL install on your
   PATH is being probed. Harmless; ignore them (or remove the stray GDAL entry from PATH / `GDAL_DRIVER_PATH`).
 - **Windows shows "fatal exception" lines in a test run:** harmless DLL-loading noise; tests disable that handler.
-- **The UI says nothing is published:** a fresh store needs a first version: `control init --from-excel <workbook>`.
+- **The UI says nothing is published:** `governed/control.db` is missing or empty: restore it from a backup or from git history.
 
 Contributing: [docs/guide.md](docs/guide.md#contributing).

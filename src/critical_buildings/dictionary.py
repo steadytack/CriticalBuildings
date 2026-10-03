@@ -1,17 +1,13 @@
 """Data dictionary, methodology, licences and release notes - generated on every run so they never go stale.
 
-Writes critical_buildings_data_dictionary.xlsx, ATTRIBUTION.txt and critical_buildings_summary.csv
+Writes the data-dictionary sheets of report.xlsx and ATTRIBUTION.txt
 (a slim, easy view of the main dataset) into the run folder.
 """
-import datetime as dt
-from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from critical_buildings import config
-from critical_buildings import sources
+from critical_buildings import config, sources
 from critical_buildings.gold import steps
 
 # ------------------------------------------------------------------ data quality score
@@ -154,15 +150,10 @@ def _source_dates():
     return out
 
 
-def write_docs(df, sites, version, today, changes, out):
+def write_docs(xw, df, sites, version, today, changes, out):
+    """Add the data-dictionary sheets to the open workbook `xw` and write ATTRIBUTION.txt into `out`."""
     _check_complete(df, sites)
     df = df.copy()
-
-    # ---- slim view ----
-    slim_cols = ["Building ID", "Name", "Building Type", "Primary Category", "Operational Importance", "Building Role",
-                 "Site ID", "Site Name", "Verification", "Data Quality Band", "Data Quality Score", "Source",
-                 "Authoritative Source", "Capacity", "Capacity Unit", "Latitude", "Longitude"]
-    df[slim_cols].to_csv(out / "critical_buildings_summary.csv", index=False)
 
     # ---- attribution ----
     src = _source_dates()
@@ -189,8 +180,8 @@ def write_docs(df, sites, version, today, changes, out):
     readme = pd.DataFrame({"Critical Buildings dataset - read me": [
         f"Run date: {today}   Rules version: {version}",
         "Area: Suffolk (pilot).",
-        "Files: critical_buildings.gpkg / .csv (one row per building), critical_sites.gpkg / .csv (one row per site), "
-        "critical_buildings_summary.csv (slim view), run_summary.xlsx (QA), qa_map.html (map).",
+        "Files: dataset.gpkg (layers buildings and sites), buildings.csv and sites.csv (one row per building / site), "
+        "report.xlsx (this workbook: Summary sheet = slim view, QA sheets, dictionary). The QA map is drawn on demand in the UI.",
         "Start with the summary CSV. Use 'Building Type', 'Operational Importance', 'Building Role' and 'Verification'.",
         "Fields ending in Default come from the rules; fields ending in Override are manual. 'Building Type' and similar "
         "un-suffixed fields show the final value.",
@@ -234,7 +225,7 @@ def write_docs(df, sites, version, today, changes, out):
         "same-name records of a different type reclassify the site; sites no register recognises are marked Unverified.",
         "6. Roles: buildings are labelled Primary / Ancillary / Standalone / Whole site / Unknown from footprint size and OSM building tags (Role settings sheet).",
         "7. Overrides: manual decisions recorded in the control store (rules UI, Review & decisions) are applied last and survive reruns. Building IDs and Site IDs stay stable between runs.",
-        "8. Outputs, QA workbook, map and this dictionary are regenerated; changes since the previous run are listed in run_summary.xlsx.",
+        "8. Outputs, QA workbook, map and this dictionary are regenerated; changes since the previous run are listed in report.xlsx.xlsx.",
     ]})
     limits = pd.DataFrame({"Known limitation": LIMITATIONS})
     release = pd.DataFrame([
@@ -247,26 +238,42 @@ def write_docs(df, sites, version, today, changes, out):
             ", ".join(f"{k} {v}" for k, v in changes.groupby("Change").size().items()) or "none")),
     ], columns=["Item", "Value"])
 
-    path = out / "critical_buildings_data_dictionary.xlsx"
-    with pd.ExcelWriter(path) as xw:
-        readme.to_excel(xw, sheet_name="Read me", index=False)
-        dict_rows(b_cols, {}).to_excel(xw, sheet_name="Buildings columns", index=False)
-        dict_rows(s_cols, SITE_ONLY).to_excel(xw, sheet_name="Sites columns", index=False)
-        values.to_excel(xw, sheet_name="Values", index=False)
-        quality.to_excel(xw, sheet_name="Quality score", index=False)
-        sources.to_excel(xw, sheet_name="Sources and licences", index=False)
-        method.to_excel(xw, sheet_name="Methodology", index=False)
-        limits.to_excel(xw, sheet_name="Known limitations", index=False)
-        release.to_excel(xw, sheet_name="Release", index=False)
-        head = PatternFill("solid", fgColor="1F3864")
-        for ws in xw.book.worksheets:
-            for c in ws[1]:
-                c.font = Font(bold=True, color="FFFFFF")
-                c.fill = head
-            ws.freeze_panes = "A2"
-            for col in ws.columns:
+    readme.to_excel(xw, sheet_name="Read me", index=False)
+    dict_rows(b_cols, {}).to_excel(xw, sheet_name="Buildings columns", index=False)
+    dict_rows(s_cols, SITE_ONLY).to_excel(xw, sheet_name="Sites columns", index=False)
+    values.to_excel(xw, sheet_name="Values", index=False)
+    quality.to_excel(xw, sheet_name="Quality score", index=False)
+    sources.to_excel(xw, sheet_name="Sources and licences", index=False)
+    method.to_excel(xw, sheet_name="Methodology", index=False)
+    limits.to_excel(xw, sheet_name="Known limitations", index=False)
+    release.to_excel(xw, sheet_name="Release", index=False)
+
+
+SLIM_COLUMNS = ["Building ID", "Name", "Building Type", "Primary Category", "Operational Importance", "Building Role",
+                "Site ID", "Site Name", "Verification", "Data Quality Band", "Data Quality Score", "Source",
+                "Authoritative Source", "Capacity", "Capacity Unit", "Latitude", "Longitude"]
+
+
+DICTIONARY_SHEETS = {"Read me", "Buildings columns", "Sites columns", "Values", "Quality score", "Sources and licences",
+                     "Methodology", "Known limitations", "Release"}
+
+
+def style_workbook(xw):
+    """Header row, frozen header and column widths on every sheet; wrapped text on the dictionary sheets."""
+    head = PatternFill("solid", fgColor="1F3864")
+    for ws in xw.book.worksheets:
+        for c in ws[1]:
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = head
+        ws.freeze_panes = "A2"
+        is_doc = ws.title in DICTIONARY_SHEETS
+        for col in ws.columns:
+            if is_doc:
                 width = min(90, max(14, max(len(str(c.value or "")) for c in col[:60]) + 2))
-                ws.column_dimensions[col[0].column_letter].width = width
+            else:
+                width = min(60, max(12, max(len(str(c.value or "")) for c in col[:200]) + 2))
+            ws.column_dimensions[col[0].column_letter].width = width
+        if is_doc:
             for row in ws.iter_rows(min_row=2):
                 for c in row:
                     c.alignment = Alignment(wrap_text=True, vertical="top")

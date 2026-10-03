@@ -3,12 +3,13 @@ import json
 import sqlite3
 from pathlib import Path
 
+import helpers
 import pandas as pd
 import pytest
 
-import helpers
-from critical_buildings.control import dumps, store as store_mod
-from critical_buildings.control import ruleset as rs
+from critical_buildings.control import dumps
+from critical_buildings.control import rules as rs
+from critical_buildings.control import store as store_mod
 from critical_buildings.control.store import ControlError, ControlStore
 
 
@@ -179,14 +180,14 @@ def test_old_database_is_upgraded_in_place(tmp_path):
     assert len(s.draft_snapshot()["rules"]) == 1                   # existing data survives
 
 
-def test_dumps_are_deterministic_and_readable(seeded_store, tmp_path):
+def test_dump_is_one_deterministic_readable_file(seeded_store, tmp_path):
     seeded_store.publish("ann", "v1")
-    out = tmp_path / "dumps"
+    out = tmp_path / "control_dump.txt"
     dumps.write_dumps(seeded_store, out)
-    first = {p.name: p.read_bytes() for p in out.glob("*.csv")}
+    first = out.read_bytes()
     dumps.write_dumps(seeded_store, out)
-    second = {p.name: p.read_bytes() for p in out.glob("*.csv")}
-    assert first == second
-    assert {"rule.csv", "rule_tag.csv", "reference_mapping.csv", "role_settings.csv", "override.csv",
-            "rule_set_version.csv", "change_log.csv"} <= set(first)
-    assert b"Fire Station" in first["rule.csv"] and b"\r\n" not in first["rule.csv"]
+    assert out.read_bytes() == first and b"\r\n" not in first
+    text = first.decode("utf-8")
+    for section in ("rule", "rule_tag", "reference_mapping", "role_settings", "override", "rule_set_version", "change_log"):
+        assert f"\n## {section} (" in text
+    assert "Fire Station" in text

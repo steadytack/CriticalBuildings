@@ -1,3 +1,254 @@
+# Read-only text copy of governed/control.db, written automatically when rules or settings are saved or published.
+# Do not edit: make changes in the UI (python -m critical_buildings ui). Regenerate with: python -m critical_buildings control dump
+
+## rule (36 rows)
+rule_ref,primary_category,building_type,importance,importance_driver,priority,active,notes
+1,Emergency,Fire Station,High,Emergency response,50,1,
+2,Emergency,Police Station,High,Emergency response and public safety,50,1,
+3,Emergency,Ambulance Station,High,Emergency response and public safety,50,1,
+4,Emergency,Coastguard,High,"Emergency response, although local operating importance may vary",50,1,
+5,Emergency,Lifeboat Station,High,"Emergency response, although local operating importance may vary",50,1,
+6,Emergency,Hospital,High,"Life safety, vulnerable occupants, essential healthcare",50,1,
+7,Emergency,Hospice,High,Vulnerable occupants and continuity of care,50,1,
+8,Emergency,Emergency Control Centres,High,Emergency response and public safety,50,1,
+9,Emergency,Search and rescue facilities,High,Emergency response and public safety,50,1,
+10,Care,GP Surgery,Medium,Primary healthcare access and continuity of care,50,1,
+11,Care,Clinics offering Medical Treatment,High,Vulnerable occupants and essential healthcare,50,1,
+12,Care,Care Home,High,Vulnerable occupants and continuity of residential care,50,1,
+13,Care,Assisted Living Facilities,High,Vulnerable occupants and continuity of assisted living support,50,1,
+14,Care,Mental health facilities,High,Vulnerable occupants and essential healthcare,50,1,
+15,Care,Medical Laboratory,Medium,"Clinical diagnostics, testing capacity and continuity of health-related laboratory services",50,1,
+16,Education,Nursery & Child Care,High,Child safeguarding and continuity of education provision,50,1,
+17,Education,Primary School,Medium,Continuity of education provision and safeguarding,50,1,
+18,Education,Secondary School,Medium,Continuity of secondary education and student welfare,50,1,
+19,Education,"Further, Higher & University Education",Medium,Continuity of education and student welfare,50,1,
+20,Education,School,Medium,Continuity of education provision and safeguarding,90,1,
+21,Education,School For Special Needs,High,Special needs safeguarding and continuity of specialist education support,50,1,
+22,Transport,Ferry & Ship Terminal,Low,Passenger movement and transport connectivity,50,1,
+23,Transport,Railway Station,Medium,Passenger movement and rail connectivity,50,1,
+24,Transport,Underground Railway System Station,High,High-volume passenger movement and underground network connectivity,50,1,
+25,Transport,Airport Buildings,High,"Air transport operations, passenger movement and critical connectivity",50,1,
+26,Government Buildings,Central Government Services,Medium,Continuity of central government services and reputational impact,50,1,
+27,Government Buildings,Ministry of Defence,High,"National defence operations, secure facilities and continuity of critical government functions",50,1,
+28,Government Buildings,HM Prison Service & Detention Centre,High,"Secure prison operations, public safety and continuity of justice services",50,1,
+29,Government Buildings,Customs Inspection,Medium,"Border control, customs operations and regulatory enforcement",50,1,
+30,Government Buildings,Law Court,Medium,Continuity of justice services and public access to courts,50,1,
+31,Government Buildings,Local Government Services,Medium,Continuity of local public services and community support,50,1,
+32,Miscellaneous,Conference Or Exhibition Centre,Medium,Public gathering risk and reputational impact,50,1,
+33,Miscellaneous,Stadiums and Arenas,Medium,"Large public gatherings, crowd safety and reputational impact",50,1,
+34,Miscellaneous,Commercially or Reputationally Important,High,Commercial sensitivity and continuity of business-critical operations,50,1,
+35,Miscellaneous,Data centres,High,Continuity of digital infrastructure and business-critical services,50,1,
+36,Miscellaneous,Energy centres,High,Continuity of energy supply and operational resilience,50,1,
+
+## rule_tag (120 rows)
+id,rule_ref,source,tag,active,notes
+1,1,OS,Emergency services > Fire Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+2,1,OS,Emergency services > Fire Service Training,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+3,1,OSM,amenity=fire_station,1,
+4,2,OS,Emergency services > Police HQ,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+5,2,OS,Emergency services > Police Services,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+6,2,OS,Emergency services > Police Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+7,2,OSM,amenity=police,1,
+8,3,OSM,emergency=ambulance_station,1,
+9,4,OS,Emergency services > Coastguard Lookout,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+10,4,OSM,amenity=coast_guard,1,
+11,4,OSM,emergency=coast_guard,1,
+12,5,OS,Emergency services > Lifeboat Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+13,5,OSM,emergency=lifeboat_station,1,
+14,5,OSM,emergency=water_rescue,1,
+15,5,OSM,emergency=marine_rescue,1,
+16,5,OSM,amenity=lifeboat_station,1,
+17,6,OS,Emergency services > Hospital,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+18,6,OSM,amenity=hospital,1,
+19,6,OSM,healthcare=hospital,1,
+20,7,OS,Emergency services > Hospice,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+21,7,OSM,healthcare=hospice,1,
+22,7,OSM,social_facility=hospice,1,
+23,8,OSM,emergency=control_centre,1,
+24,9,OSM,emergency=mountain_rescue,1,
+25,9,OSM,emergency=air_rescue_service,1,
+26,9,OSM,amenity=rescue_station,1,
+27,10,OSM,amenity=doctors,1,
+28,10,OSM,healthcare=doctor,1,
+29,11,OSM,amenity=clinic,1,
+30,11,OSM,healthcare=birthing_centre,1,
+31,11,OSM,healthcare=clinic,1,
+32,11,OSM,healthcare=dialysis,1,
+33,11,OSM,healthcare=medical_imaging,1,
+34,11,OSM,healthcare=rehabilitation,1,
+35,12,OSM,social_facility=nursing_home,1,
+36,12,OSM,building=nursing_home,1,
+37,13,OSM,social_facility=assisted_living,1,
+38,14,OSM,social_facility:for=mental_health,1,
+39,14,OSM,healthcare=counselling,1,
+40,15,OSM,healthcare=laboratory,1,
+41,16,OS,Education > First School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+42,16,OSM,amenity=kindergarten,1,
+43,16,OSM,amenity=childcare,1,
+44,17,OS,Education > Primary School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+45,17,OS,Education > Infant School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+46,17,OS,Education > Junior School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+47,17,OS,Education > Non-State Primary Or Preparatory School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+48,17,OSM,school=primary,1,
+49,18,OS,Education > Secondary School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+50,18,OS,Education > Middle School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+51,18,OS,Education > Non-State Secondary School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+52,18,OSM,school=secondary,1,
+53,19,OS,Education > Further Education,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+54,19,OS,Education > Higher Education,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+55,19,OS,Education > University,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+56,19,OS,Education > University College,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+57,19,OSM,amenity=college,1,
+58,19,OSM,amenity=university,1,
+59,19,OSM,school=vocational,1,
+60,20,OS,Education > School,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+61,20,OSM,amenity=language_school,1,Generic school rule - lower priority so specific school rules win.
+62,20,OSM,amenity=music_school,1,Generic school rule - lower priority so specific school rules win.
+63,20,OSM,school=sport,1,Generic school rule - lower priority so specific school rules win.
+64,21,OS,Education > School For Special Needs,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+65,21,OSM,school=blind,1,
+66,21,OSM,school=special_education_needs,1,
+67,22,OS,Transport > Passenger Ferry Terminal,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+68,22,OS,Transport > Ship Passenger Terminal,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+69,22,OS,Transport > Vehicular Ferry Terminal,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+70,22,OS,Transport > Vehicular Ferry Terminal International,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+71,22,OSM,landuse=port,1,landuse=port is an area: buildings inside the area are selected.
+72,22,OSM,amenity=ferry_terminal,1,landuse=port is an area: buildings inside the area are selected.
+73,23,OS,Transport > Railway Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+74,23,OS,Transport > Principal Railway Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+75,23,OS,Transport > Vehicular Rail Terminal,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+76,23,OSM,railway=station,1,
+77,23,OSM,public_transport=station,0,Switched off: also matches bus/coach stations and ferry jetties. railway=station is enough for rail stations.
+78,24,OS,Transport > Underground Railway System Station,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+79,24,OSM,station=subway,1,
+80,25,OSM,aeroway=aerodrome,1,Area tag: buildings inside the area are selected.
+81,26,OS,Government Buildings > Central Government Services,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+82,26,OSM,government=ministry,1,
+83,27,OSM,landuse=military,1,Area tag: buildings inside the area are selected.
+84,27,OSM,military_service=*,1,Area tag: buildings inside the area are selected.
+85,28,OS,Government Buildings > HM Prison Service,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+86,28,OS,Government Buildings > HM Detention Centre,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+87,28,OSM,amenity=prison,1,
+88,29,OS,Government Buildings > Customs Inspection,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+89,29,OSM,amenity=customs,1,
+90,29,OSM,government=customs,1,
+91,30,OS,Government Buildings > Law Court,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+92,30,OSM,amenity=courthouse,1,
+93,31,OS,Government Buildings > Local Government Services,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+94,31,OSM,amenity=townhall,1,
+95,32,OS,Miscellaneous > Conference Or Exhibition Centre,0,Original OS NGD name - not in the free OS Open Map Local data. Set to Y if you use OS NGD.
+96,32,OSM,amenity=conference_centre,1,
+97,32,OSM,amenity=exhibition_centre,1,
+98,33,OSM,leisure=stadium,1,
+99,34,MANUAL,,1,No automatic tags: applied by manual override only.
+100,35,OSM,telecom:data_center=*,1,
+101,35,OSM,building=data_center,1,
+102,36,OSM,plant:output:hot_water=*,1,"Any OSM feature with a plant:output:* tag (any value). In Suffolk this is mostly power plants: solar farms, plus biomass, biogas, battery storage, wind, gas, waste and nuclear. Tag kept deliberately broad."
+103,36,OSM,plant:output:electricity=*,1,"Any OSM feature with a plant:output:* tag (any value). In Suffolk this is mostly power plants: solar farms, plus biomass, biogas, battery storage, wind, gas, waste and nuclear. Tag kept deliberately broad."
+104,1,OS,Emergency Service > Fire Station,1,OS Open Map Local
+105,2,OS,Emergency Service > Police Station,1,OS Open Map Local
+106,6,OS,Medical Care > Hospital,1,OS Open Map Local
+107,7,OS,Medical Care > Hospice,1,OS Open Map Local
+108,12,OS,Medical Care > Medical Care Accommodation,0,"Switched off: OS 'Medical Care Accommodation' is staff accommodation at hospitals, not care homes."
+109,17,OS,Education > Primary Education,1,OS Open Map Local
+110,17,OS,Education > Non State Primary Education,1,OS Open Map Local
+111,18,OS,Education > Secondary Education,1,OS Open Map Local
+112,18,OS,Education > Non State Secondary Education,1,OS Open Map Local
+113,19,OS,Education > Further Education,1,OS Open Map Local
+114,19,OS,Education > Higher or University Education,1,OS Open Map Local
+115,21,OS,Education > Special Needs Education,1,OS Open Map Local
+116,22,OS,Water Transport > Passenger Ferry Terminal,1,Open Map Local port polygons treated as ferry & ship terminals.
+117,22,OS,Water Transport > Port Consisting of Docks and Nautical Berthing,1,Open Map Local port polygons treated as ferry & ship terminals.
+118,25,OS,Air Transport > Airport,1,Open Map Local airport building polygons.
+119,25,OS,Air Transport > Airfield,1,OS Open Map Local functional site (airfield polygon); used to group airport buildings into a site.
+120,23,OS,Rail Transport > Railway Station,1,"From the OS Open Map Local 'RailwayStation' layer (station points). The layer has no theme, so 'Rail Transport' is just a label."
+
+## reference_mapping (27 rows)
+id,sort_order,source,field,match,value,building_type,active,notes
+1,1,DfE,EstablishmentStatus (name),Contains,closed,IGNORE,1,"Closed schools are dropped ('Open, but proposed to close' is kept)."
+2,2,DfE,EstablishmentStatus (name),Contains,proposed to open,IGNORE,1,Not open yet.
+3,3,DfE,TypeOfEstablishment (name),Contains,special,School For Special Needs,1,"Community, academy, free and independent special schools."
+4,4,DfE,TypeOfEstablishment (name),Contains,alternative provision,School,1,Alternative provision academies - generic school.
+5,5,DfE,TypeOfEstablishment (name),Contains,pupil referral,School,1,Pupil referral units - generic school.
+6,6,DfE,TypeOfEstablishment (name),Contains,higher education,"Further, Higher & University Education",1,
+7,7,DfE,TypeOfEstablishment (name),Contains,further education,"Further, Higher & University Education",1,
+8,8,DfE,PhaseOfEducation (name),Contains,16 plus,"Further, Higher & University Education",1,Sixth-form colleges and 16-19 academies.
+9,9,DfE,PhaseOfEducation (name),Contains,nursery,Nursery & Child Care,1,Maintained nursery schools only; private nurseries are not in this dataset.
+10,10,DfE,PhaseOfEducation (name),Contains,primary,Primary School,1,Includes 'Middle deemed primary'.
+11,11,DfE,PhaseOfEducation (name),Contains,secondary,Secondary School,1,Includes 'Middle deemed secondary'.
+12,12,DfE,PhaseOfEducation (name),Contains,all-through,Secondary School,1,All-through schools cover primary and secondary; counted as secondary.
+13,13,DfE,PhaseOfEducation (name),Contains,not applicable,School,1,Mostly independent schools with no phase - generic school.
+14,14,CQC,Dormant (Y/N),Equals,Y,IGNORE,1,Dormant locations are dropped.
+15,15,CQC,Care home?,Equals,Y,Care Home,1,CQC flags residential care homes.
+16,16,CQC,Location Primary Inspection Category,Contains,hospice,Hospice,1,
+17,17,CQC,Location Primary Inspection Category,Contains,acute hospital,Hospital,1,NHS and independent acute hospitals.
+18,18,CQC,Location Primary Inspection Category,Contains,mental health,Mental health facilities,1,
+19,19,CQC,Location Primary Inspection Category,Contains,GP practices,GP Surgery,1,
+20,20,CQC,Location Primary Inspection Category,Contains,independent consulting doctors,Clinics offering Medical Treatment,1,
+21,21,CQC,Location Primary Inspection Category,Contains,community health,Clinics offering Medical Treatment,1,
+22,22,CQC,Location Primary Inspection Category,Contains,ambulance,Ambulance Station,0,"Switched off: CQC ambulance locations are mostly independent patient transport, not emergency stations."
+23,23,CQC,Location Primary Inspection Category,Contains,community based adult social care,IGNORE,1,"Home-care and supported-living agencies, mostly offices rather than care buildings."
+24,24,CQC,Location Primary Inspection Category,Contains,dentists,IGNORE,1,No dentist rule.
+25,25,NHS ODS,Name,Contains,response post,IGNORE,1,A response post is not a hospital.
+26,26,NHS ODS,Name,Contains,road site,IGNORE,1,"'Hospital Road Site' style names are addresses, not hospitals."
+27,27,NHS ODS,Name,Contains,hospital,Hospital,1,NHS trust sites with 'hospital' in the name (located by postcode).
+
+## role_settings (34 rows)
+kind,key,value
+setting,min_area,150.0
+ancillary_osm_building,barn,
+ancillary_osm_building,cabin,
+ancillary_osm_building,carport,
+ancillary_osm_building,container,
+ancillary_osm_building,farm_auxiliary,
+ancillary_osm_building,garage,
+ancillary_osm_building,garages,
+ancillary_osm_building,greenhouse,
+ancillary_osm_building,hut,
+ancillary_osm_building,kiosk,
+ancillary_osm_building,outbuilding,
+ancillary_osm_building,roof,
+ancillary_osm_building,service,
+ancillary_osm_building,shed,
+ancillary_osm_building,shelter,
+ancillary_osm_building,silo,
+ancillary_osm_building,stable,
+ancillary_osm_building,static_caravan,
+ancillary_osm_building,storage_tank,
+ancillary_osm_building,toilets,
+primary_osm_building,civic,
+primary_osm_building,college,
+primary_osm_building,fire_station,
+primary_osm_building,government,
+primary_osm_building,hangar,
+primary_osm_building,healthcare,
+primary_osm_building,hospital,
+primary_osm_building,kindergarten,
+primary_osm_building,public,
+primary_osm_building,school,
+primary_osm_building,terminal,
+primary_osm_building,train_station,
+primary_osm_building,university,
+
+## override (11 rows)
+building_id,primary_category_override,building_type_override,operational_importance_override,operational_importance_driver_override,manual_override_notes,building_role_override,review_decision,verification_override,exclude,exclude_site,decided_by,decided_at
+BLDG-000231,,,,,"OS Functional Site and the OSM school polygon agree on this location; only the DfE point is 1.1 km away and its postcode (IP27 9FY) is not in Code-Point Open or postcodes.io, so it cannot be checked. Kept the OS/OSM location.",,Accepted,,,,migration,2026-10-01T13:03:42+00:00
+BLDG-000398,,,,,OS unnamed Further Education building matches OSM 'West Suffolk College (Built Environment Campus)': same college campus.,,Accepted,,,,migration,2026-10-01T13:03:42+00:00
+BLDG-000468,,,,,Combined Fire and Police Station (OS name). OSM fire station is the same building; the police feature is kept as its own record.,,Accepted,,,,migration,2026-10-01T13:03:42+00:00
+BLDG-000617,,,,,"DfE GIAS 'St Felix Roman Catholic Primary School, Haverhill' is the same school (name differs only by town suffix).",,,Verified (manual),,,migration,2026-10-01T13:03:42+00:00
+BLDG-000743,,Mental health facilities,,,"CQC registers 'Lothingland' (59 m away, same name) as a mental health location; OS tag 'Hospice' is wrong.",,,Verified (manual),,,migration,2026-10-01T13:03:42+00:00
+BLDG-001301,,,,,Combined Fire and Police Station (OS name). Police record is correct for its type.,,Accepted,,,,migration,2026-10-01T13:03:42+00:00
+BLDG-001391,,,,,OS 'Otley College' matches OSM 'Suffolk Rural Campus (Suffolk New College)': same campus after the college merger.,,Accepted,,,,migration,2026-10-01T13:03:42+00:00
+BLDG-001534,,,,,Prep school of Ipswich School (DfE GIAS record 154 m away).,,,Verified (manual),,,migration,2026-10-01T13:03:42+00:00
+BLDG-001621,,,,,CQC 'Ipswich Hospital' is 241 m away: same hospital campus.,,,Verified (manual),,,migration,2026-10-01T13:03:42+00:00
+BLDG-003427,,,,,DfE GIAS confirms the school is open; location is the DfE point (no building footprint within 20 m).,,Accepted,,,,migration,2026-10-01T13:03:42+00:00
+BLDG-003435,,,,,DfE GIAS confirms the school is open; location is the DfE point (no building footprint within 20 m).,,Accepted,,,,migration,2026-10-01T13:03:42+00:00
+
+## rule_set_version (1 rows)
+version_id,created_at,created_by,approved_by,reason,content_hash
+1,2026-10-01T13:47:08+00:00,migration,,"Initial import from the Excel rules workbook (rules, role settings, reference mapping)",cdb51159a41ddf9e2a23bdfe592b81f62529e4705f43aed2ffc1e03b051942e5
+
+## change_log (197 rows)
 id,ts,user,table_name,key,action,old_json,new_json,reason
 1,2026-10-01T13:47:08+00:00,migration,rule,1,insert,,"{""rule_ref"": 1, ""primary_category"": ""Emergency"", ""building_type"": ""Fire Station"", ""importance"": ""High"", ""importance_driver"": ""Emergency response"", ""priority"": 50, ""active"": 1, ""notes"": """"}",Imported from the Excel rules workbook
 2,2026-10-01T13:47:08+00:00,migration,rule,2,insert,,"{""rule_ref"": 2, ""primary_category"": ""Emergency"", ""building_type"": ""Police Station"", ""importance"": ""High"", ""importance_driver"": ""Emergency response and public safety"", ""priority"": 50, ""active"": 1, ""notes"": """"}",Imported from the Excel rules workbook

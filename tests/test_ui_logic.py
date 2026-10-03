@@ -1,11 +1,11 @@
 """The Streamlit-free parts of the rules UI."""
 import copy
 
+import helpers
 import numpy as np
 import pandas as pd
 
-import helpers
-from critical_buildings.ui import logic
+from critical_buildings.ui import jobs, logic
 
 
 def snap():
@@ -86,14 +86,14 @@ def _runs(*rows):
 
 def test_cli_command_uses_the_current_interpreter():
     import sys
-    assert logic.cli_command("run", "--area", "suffolk") == [sys.executable, "-m", "critical_buildings", "run", "--area", "suffolk"]
+    assert jobs.cli_command("run", "--area", "suffolk") == [sys.executable, "-m", "critical_buildings", "run", "--area", "suffolk"]
 
 
 def test_gdal_plugin_noise_is_removed_from_output():
     raw = ("ERROR 1: Can't load requested DLL: C:\\gdalplugins\\gdal_PDF.dll\n"
            "127: The specified procedure could not be found.\n\n"
            "run R1: 3 buildings")
-    assert logic.clean_output(raw) == "run R1: 3 buildings"
+    assert jobs.clean_output(raw) == "run R1: 3 buildings"
 
 
 def test_sanity_gate_flags_empty_and_large_swings_only():

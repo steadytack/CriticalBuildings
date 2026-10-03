@@ -1,14 +1,89 @@
-"""Plain-English checks on a rule set snapshot. Used by the UI (drafts), by Publish, and by the pipeline's first step.
-
-The checks first written for the Excel rules workbook, now on the normalised rule model.
-Each function returns messages; errors block saving/publishing, warnings are notes.
+"""The rule set: what a rule and a tag are, the immutable snapshot a run uses, and the plain-English checks that stop a bad one.
 """
 import difflib
+import hashlib
+import json
 import re
+from dataclasses import dataclass
 
-from critical_buildings.control import ruleset as rs
-from critical_buildings.control.ruleset import Tag
+# ====================================================================================================
+# Rule sets: tags, snapshots, content hash, version labels
+# ====================================================================================================
 
+# Tag keys we expect to see in OSM. A key outside this list gets a "did you mean?" hint.
+KNOWN_OSM_KEYS = {
+    "amenity", "healthcare", "emergency", "social_facility", "social_facility:for", "building",
+    "school", "railway", "public_transport", "station", "landuse", "aeroway", "government",
+    "military_service", "leisure", "telecom", "plant:output:hot_water", "plant:output:electricity",
+    "military", "office", "man_made", "power", "tourism", "shop", "healthcare:speciality",
+    "telecom:data_center",
+}
+OS_GROUPS = {
+    "Emergency services", "Education", "Transport", "Government Buildings", "Miscellaneous", "Medical Care",
+    "Utilities", "Sport And Entertainment",
+    # OS Open Map Local themes
+    "Air Transport", "Attraction And Leisure", "Cultural Facility", "Emergency Service", "Religious Buildings",
+    "Retail", "Road Transport", "Sports Or Exercise Facility", "Water Transport", "Rail Transport",
+}
+IMPORTANCE = ("High", "Medium", "Low")
+SOURCES = ("OSM", "OS", "MANUAL")
+MAPPING_SOURCES = ("DfE", "CQC", "NHS ODS")
+# OSM tags that describe an area (not a building): buildings inside them inherit the area's rule
+AREA_TAGS = {("landuse", "port"), ("landuse", "military"), ("aeroway", "aerodrome")}
+
+
+@dataclass
+class Tag:
+    """One active way of recognising a building type (one tag of one rule)."""
+    rule_ref: int
+    priority: int
+    category: str
+    building_type: str
+    importance: str
+    driver: str
+    source: str      # OSM / OS / MANUAL
+    key: str         # OSM key, or OS theme
+    value: str       # OSM value ('*' = any), or OS classification
+    raw: str
+    notes: str = ""
+
+
+def content_hash(snapshot):
+    """Stable sha256 of a snapshot (key order and whitespace independent)."""
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def version_label(version_id, snapshot):
+    """Short string stamped on every output record: v<id>-<first 6 hash chars>."""
+    return f"v{version_id}-{content_hash(snapshot)[:6]}"
+
+
+@dataclass
+class RuleSet:
+    """A published rule set, ready for the pipeline: tags to classify with, role settings, register mapping."""
+    version_id: int
+    label: str                 # v<id>-<hash>, stamped on every output record
+    snapshot: dict
+    tags: list
+    role: dict                 # min_area, ancillary (set), primary (set), per_type
+    mapping: list              # ACTIVE reference mapping rows, in order (first match wins)
+    errors: list
+    warnings: list
+
+    @property
+    def priorities(self):
+        """{rule_ref: priority}: lower wins when a feature matches several rules."""
+        return {t.rule_ref: t.priority for t in self.tags}
+
+    def require_valid(self):
+        if self.errors:
+            raise SystemExit("Rules check FAILED:\n  " + "\n  ".join(self.errors))
+        return self
+
+
+# ====================================================================================================
+# Checks (plain-English problems; an empty list means fine)
+# ====================================================================================================
 
 def check_rules(snapshot):
     """Returns (errors, warnings, tags). tags are the ACTIVE rule tags, in tag-id order (the order they were
@@ -29,7 +104,7 @@ def check_rules(snapshot):
                            ("Operational Importance Driver", r["importance_driver"])):
             if not str(val or "").strip():
                 errors.append(f"{where}: '{label}' is empty.")
-        if r["importance"] not in rs.IMPORTANCE:
+        if r["importance"] not in IMPORTANCE:
             errors.append(f"{where}: Operational Importance must be High, Medium or Low, found '{r['importance']}'.")
         if not isinstance(r["priority"], int) or isinstance(r["priority"], bool):
             errors.append(f"{where}: Priority must be a whole number (lower wins), found '{r['priority']}'.")
@@ -60,8 +135,8 @@ def check_rules(snapshot):
                               f"(e.g. amenity=fire_station).")
                 continue
             key, value = text.split("=", 1)
-            if key not in rs.KNOWN_OSM_KEYS:
-                hint = difflib.get_close_matches(key, rs.KNOWN_OSM_KEYS, n=1)
+            if key not in KNOWN_OSM_KEYS:
+                hint = difflib.get_close_matches(key, KNOWN_OSM_KEYS, n=1)
                 warnings.append(f"{tw}: OSM key '{key}' is not one I recognise"
                                 + (f" - did you mean '{hint[0]}'?" if hint else "."))
         else:
@@ -69,8 +144,8 @@ def check_rules(snapshot):
                 errors.append(f"{tw}: OS tag '{text}' should look like 'Group > Classification'.")
                 continue
             key, value = [s.strip() for s in text.split(">")]
-            if key not in rs.OS_GROUPS:
-                hint = difflib.get_close_matches(key, rs.OS_GROUPS, n=1)
+            if key not in OS_GROUPS:
+                hint = difflib.get_close_matches(key, OS_GROUPS, n=1)
                 warnings.append(f"{tw}: OS group '{key}' is not one I recognise"
                                 + (f" - did you mean '{hint[0]}'?" if hint else "."))
         tags.append(Tag(ref, int(r["priority"]), str(r["primary_category"]).strip(), str(r["building_type"]).strip(),
@@ -100,7 +175,7 @@ def check_reference_mapping(snapshot):
         if not m["active"]:
             continue
         where = f"Reference mapping row {m['sort_order']}"
-        if m["source"] not in rs.MAPPING_SOURCES:
+        if m["source"] not in MAPPING_SOURCES:
             errors.append(f"{where}: Reference Source must be DfE, CQC or NHS ODS, found '{m['source']}'.")
         if m["match"] not in ("Contains", "Equals"):
             errors.append(f"{where}: Match must be Contains or Equals, found '{m['match']}'.")

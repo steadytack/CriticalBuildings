@@ -1,8 +1,8 @@
 """OS building <-> OSM feature matching on synthetic footprints."""
 import pytest
+from helpers import feature, gdf, point, square
 
 from critical_buildings.gold import merge
-from helpers import feature, gdf, point, square
 
 FIRE = dict(category="Emergency", building_type="Fire Station")
 POLICE = dict(category="Emergency", building_type="Police Station")

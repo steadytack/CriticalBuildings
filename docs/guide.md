@@ -12,14 +12,15 @@ Everything generated lives under `data/` (git-ignored). Human-governed inputs ar
 | Layer | Folder | What is in it | Changes? | Reproducible? |
 |---|---|---|---|---|
 | **Bronze** | `data/bronze/<source>/<date>/` | Raw downloads exactly as received, plus `_manifest.json` (URL, time, size, SHA-256, licence). `LATEST.json` says which snapshot runs use. | Never edited. New fetch = new folder. | No (it is the evidence) |
-| **Silver: conformed** | `data/silver/<area>/conformed/<key>/` | Cleaned tables that do not depend on the rules: CQC locations (parquet), OS building footprints (GeoPackage). `<key>` = hash of the bronze inputs. | Rebuilt when bronze changes. | Yes |
+| **Silver: conformed** | `data/silver/<area>/conformed/<key>/` | Cleaned tables that do not depend on the rules: CQC locations (parquet), OS building footprints (GeoPackage). `<key>` = hash of the bronze inputs; a table is copied forward from an earlier build when the sources it reads are unchanged (an OSM refresh does not re-read the CQC spreadsheet). | Rebuilt when its sources change. | Yes |
 | **Silver: classified** | `data/silver/<area>/classified/<key>/` | OSM and OS features with the rules applied, candidate sites, register records mapped to building types (GeoParquet). `<key>` = hash of bronze + rule version + silver schema. | Cached; same inputs reuse it. | Yes |
 | **Gold** | `data/gold/<area>/<run id>/` | One folder per run with every deliverable and `lineage.json`. `CURRENT.json` points at the latest successful run. | Never edited after the run. | Yes |
 | **Published** | `data/published/<area>/<release>/` | A checksum-verified copy of one run, kept permanently. | Immutable. | Yes |
 | **Archive** | `data/archive/` | Zipped older gold runs and bronze snapshots (with checksum sidecars). | Written by `archive`. | n/a |
+| **Logs** | `data/logs/` | One `<run id>.jsonl` per run (every stage, step and count, kept even if the run failed) and the output of jobs started from the UI. | Appended during a run. | n/a |
 
 The **control plane** is separate: `settings.yml` (thresholds, areas, source catalogue), `governed/control.db` (rules,
-versions, audit trail, human decisions, identity registries, run and release registry) and `governed/dumps/` (text copies for review).
+versions, audit trail, human decisions, identity registries, run and release registry) and `governed/control_dump.txt` (a text copy for review).
 
 ```mermaid
 flowchart TB
@@ -43,24 +44,25 @@ flowchart TB
 | Stage | Code | Input | Output | Checks |
 |---|---|---|---|---|
 | Fetch | `sources.py` | the internet | new bronze snapshot (only if changed) | checksum, manifest |
-| Silver | `silver/` | bronze, rule set | classified OSM/OS features, site polygons, register records | rules check, settings check |
+| Silver | `silver.py` | bronze, rule set | classified OSM/OS features, site polygons, register records | rules check, settings check |
 | Merge | `gold/merge.py` | classified OSM + OS | one record per building (Both / OSM / OS) | overlap or proximity + same type; ambiguous matches flagged |
 | Sites | `gold/sites.py` | merged records, site polygons | `site_group` per building | OS functional site, then OSM site/area, then proximity cluster |
 | Register check | `gold/reference_match.py` | sites, DfE/CQC/NHS records | verification, capacity, rating; missing buildings added; type corrections | name + distance + type; location conflicts use the register's postcode |
 | Roles | `gold/roles.py` | records | Primary / Ancillary / Standalone ... | role settings |
 | IDs, overrides, quality, assembly | `gold/steps.py` | all of the above, human decisions | stable `Building ID` / `Site ID`, the delivered tables, quality score | append-only registries; schema |
-| Publish | `publish.py`, `dictionary.py` | gold tables | files, QA workbook, map, dictionary, attribution | every output column has a description |
+| Publish | `publish.py`, `dictionary.py` | gold tables | `dataset.gpkg`, CSVs, `report.xlsx` (summary, QA, dictionary), attribution | every output column has a description |
 
 ```
 settings.yml          every threshold, the areas and the source catalogue
-governed/             control.db (rules store) + dumps/ (text copies for git review)
+governed/             control.db (rules store) + control_dump.txt (text copy for git review)
 data/                 bronze/ silver/ gold/ published/ archive/   (git-ignored)
 src/critical_buildings/
   cli.py  paths.py  config.py  pipeline.py  runs.py  retention.py  lineage.py
   sources.py        fetchers, manifests            publish.py + dictionary.py   output files, QA, data dictionary
-  silver/           conform + classify + register loading
+  silver.py         conform + classify + register loading
+  progress.py       what a run reports: stages, steps, counts (feeds the UI and the run registry)
   gold/             merge (and name matching), sites, reference_match, roles, steps (IDs, overrides, quality, assembly)
-  control/          rules store (SQLite), validation, versions, dumps, Excel view
+  control/          rules store (SQLite), rule set and checks (rules.py), text dump
   ui/               the rules editor (Streamlit)
 ```
 
@@ -95,11 +97,10 @@ site is *Primary*; OSM `building=` values that are always Ancillary or Primary; 
 3. **Save to the draft** (needs your name and a reason).
 4. **Publish** in the sidebar. Runs use only published versions.
 
-For a read-only spreadsheet view: `python -m critical_buildings export-excel`.
 
 **Storage.** Rules are in `governed/control.db` (SQLite): `rule`, `rule_tag`, `role_setting`, `role_osm_value`,
 `role_type_min`, `reference_mapping`, numbered immutable versions (`rule_set_version`) and the audit trail (`change_log`).
-A binary file does not diff in git, so every save and publish rewrites text copies in `governed/dumps/`; review those.
+A binary file does not diff in git, so every save and publish rewrites one text copy, `governed/control_dump.txt`; review that.
 The rules began in an Excel workbook that was imported once; it is in git history (see the README).
 
 ## Runs, releases and archiving
@@ -183,7 +184,7 @@ flowchart LR
     bf --> r
     r --> id[gold: IDs and roles]
     ov[(decisions + ID registries)] --> id
-    id --> out[critical_buildings / critical_sites]
+    id --> out[buildings / sites]
 ```
 
 **3. Record and column lineage** (inside the data)
@@ -201,12 +202,31 @@ flowchart LR
 | `Rule Version`, `Run Date` | the rule version and date of the run |
 
 **"Why is this building like this?"** Find it by `Building ID`; read `Source Feature ID`, `Match Method`, `All Matched Rule
-Refs`. `Rule Version` gives the rule set (UI *Versions & history*, or `governed/dumps/rule_tag.csv` in git history). The run's
-`lineage.json` gives the input files. `governed/dumps/override.csv` and the audit trail show any manual decision.
+Refs`. `Rule Version` gives the rule set (UI *Versions & history*, or `governed/control_dump.txt` in git history). The run's
+`lineage.json` gives the input files. the `override` section of `governed/control_dump.txt` and the audit trail show any manual decision.
 
 ## Running from the UI
 
-`python -m critical_buildings ui` opens the rules editor; its **Run** tab shows which rule set will be used and whether `check` passes, and has **Fetch**, **Build** (dev or candidate, with notes) and **Release** buttons that run the same CLI commands, showing their output. Below are the run and release history, with a warning when the latest run is empty or its building count differs from the previous run by more than 10%. Builds take about a minute and the page waits for them.
+`python -m critical_buildings ui` opens the web UI. The **Run** tab shows what a build would do (rule set, whether the cleaned
+data can be reused, whether the sources changed) and has **Fetch**, **Build** (dev or candidate, with notes) and **Release**
+buttons. A job runs in a separate process, so reloading the page or closing the tab does not stop it. While it runs the page
+shows each stage (clean and classify, match and identify, write deliverables), the step it is on, counts so far and warnings;
+the same events are kept in `data/logs/<run id>.jsonl` and in the run registry (`run_stage`), so **Runs** can show a finished run's
+timeline later. If the process dies (PC asleep, window closed) the run is marked failed and its half-written folder removed.
+
+**How a stage reports.** Code calls `progress.step("...")`, `progress.note("name", value)` and `progress.bar(done, total)` inside
+`with progress.stage("gold"):`. The stages themselves are listed under `pipeline.stages` in `settings.yml` (id, label, layer,
+description, and the function that runs them), which is also what the **Pipeline** tab draws, so a new stage appears in the UI
+once it is declared there.
+
+The other tabs: **Pipeline** (the graph with source freshness and per-stage detail), **Runs** (history, size over time, changes,
+archive), **Data** (browse and preview every layer), **Lineage** (inputs to outputs, and why a record is as it is), **Quality**
+(charts), **Settings** (thresholds with a reason) and **Reference data** (the editable rules).
+
+**What a run folder holds** (`data/gold/<area>/<run id>/`): `dataset.gpkg` (layers `buildings`, `sites`), `buildings.csv`,
+`sites.csv`, `report.xlsx` (Summary sheet first, then QA sheets, then the data dictionary), `ATTRIBUTION.txt`, `lineage.json`.
+Runs made before this layout used longer names (`critical_buildings.csv`, `critical_sites.csv`, separate workbooks and a stored
+map); they are still read and released as they are.
 
 ## Adding an area or a source
 
@@ -215,7 +235,7 @@ grid squares), then `fetch --area <name>` and `run --area <name>`. Registers are
 only the data differs. (Only Suffolk has been run.)
 
 **Source:** add it under `sources:` in `settings.yml` (licence and attribution are copied into manifests and
-`ATTRIBUTION.txt`), write a `fetch_<name>` function in `sources.py`, read it in `silver/`, and add tests (see
+`ATTRIBUTION.txt`), write a `fetch_<name>` function in `sources.py`, read it in `silver.py`, and add tests (see
 `tests/test_bronze.py` for serving files from a local web server).
 
 ## Contributing
@@ -235,6 +255,6 @@ python -m pytest                    # everything, including the end-to-end regre
 - **Paths come from `paths.py`.** Do not build paths from `__file__`.
 - **SQL only in `control/store.py`.** Everything else uses its methods.
 - **A new output column needs a description** in `dictionary.py`, or the run stops.
-- **Rule changes:** use the UI, then commit `governed/control.db` and the updated `governed/dumps/` (do not edit dumps by hand).
+- **Rule changes:** use the UI, then commit `governed/control.db` and the updated `governed/control_dump.txt` (do not edit the dump by hand).
   Do not commit `data/` or `.venv/`.
 - Small commits with a message that says *why*; keep the golden regression green.

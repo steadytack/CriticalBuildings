@@ -14,7 +14,7 @@ import pandas as pd
 
 from critical_buildings import config, lineage, paths
 from critical_buildings.control.store import ControlError, current_user, now
-from critical_buildings.publish import DELIVERABLES
+from critical_buildings.publish import DELIVERABLES, find_output
 
 
 @dataclass
@@ -51,8 +51,8 @@ def load_previous(area):
     rid = current_run_id(area)
     if not rid:
         return None, None
-    csv = run_dir(area, rid) / "critical_buildings.csv"
-    if not csv.exists():
+    csv = find_output(run_dir(area, rid), "buildings")
+    if csv is None:
         return None, None
     return rid, pd.read_csv(csv, dtype=str).fillna("")
 
@@ -136,3 +136,14 @@ def release(store, area, name=None, run_id=None, notes="", user=None):
         "rule_version": lin["rules"]["label"], "notes": notes}, indent=2), encoding="utf-8")
     store.insert_release(name, area, run_id, user or current_user(), notes)
     return dest
+
+
+def abandon(store, area, run_id, reason="The process stopped before the run finished"):
+    """Close a run that was left 'running' because its process died (e.g. the PC slept or a window was closed).
+    Marks it failed and removes its half-written folder. Does nothing for a run that is not 'running'."""
+    row = store.get_run(run_id)
+    if row is None or row["status"] != "running":
+        return False
+    store.update_run(run_id, status="failed", finished_at=now(), error=reason)
+    shutil.rmtree(run_dir(area, run_id), ignore_errors=True)
+    return True

@@ -9,18 +9,14 @@ Verification per site:  Verified | Unverified | Not covered
   Unverified    the building type is covered by a reference dataset but nothing matched (maybe closed, mis-tagged)
   Not covered   no reference dataset exists for this building type
 """
-import re
-from difflib import SequenceMatcher
-from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
 
-from critical_buildings import paths
-from critical_buildings import config
+from critical_buildings import config, paths
 from critical_buildings.gold.merge import name_similarity, strict_similarity
-from critical_buildings.silver.reference import _norm_pc
+from critical_buildings.silver import _norm_pc
 
 
 def _c():
@@ -104,9 +100,11 @@ def explain_unverified(site, ref_all, ref_valid, categories):
 
 def building_footprints(boundary, area=paths.DEFAULT_AREA):
     """OS Open Map Local Building polygons for the area (cached, used to give authoritative points a footprint)."""
-    cache = paths.silver_conformed_dir(area) / "os_buildings.gpkg"
-    if cache.exists():
+    inputs = [("os_open_map_local", None), ("osm_overpass", "area_boundary.json")]     # the footprints and the boundary they are clipped to
+    cache = paths.conformed_lookup(area, "os_buildings.gpkg", inputs)
+    if cache is not None:
         return gpd.read_file(cache)
+    cache = paths.silver_conformed_dir(area) / "os_buildings.gpkg"
     frames = []
     for f in paths.os_layer_paths("Building", tiles=sorted(config.load_area(area)["os_grid_squares"])):
         g = gpd.read_file(f, columns=["ID"], bbox=tuple(boundary.bounds))
@@ -115,6 +113,7 @@ def building_footprints(boundary, area=paths.DEFAULT_AREA):
     b["geometry"] = b.geometry.force_2d()
     b = b[b.geometry.representative_point().within(boundary)]
     b.to_file(cache, driver="GPKG")
+    paths.conformed_stamp(area, "os_buildings.gpkg", inputs)
     return b
 
 
