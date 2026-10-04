@@ -131,8 +131,9 @@ def test_a_transient_bad_response_is_retried(isolated_paths, web, monkeypatch):
     assert fetch(base, name="osm.json")["status"] == "new"
 
 
-def test_min_elements_can_be_raised_per_file(isolated_paths, web):
+def test_min_elements_can_be_raised_per_file(isolated_paths, web, monkeypatch):
     root, base = web
+    monkeypatch.setattr(sources.time, "sleep", lambda s: None)          # the shortfall is retried like any bad download
     (root / "osm.json").write_text(json.dumps({"elements": [{"type": "node", "id": 1}]}))
     spec = [{"name": "osm.json", "url": f"{base}/osm.json", "min_elements": 5}]
     with pytest.raises(RuntimeError, match="at least 5"):

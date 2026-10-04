@@ -55,6 +55,32 @@ def test_nearby_buildings_without_a_site_polygon_form_a_proximity_cluster():
     assert methods == {"Proximity cluster": 2, "Single building": 1}
 
 
+def test_a_proximity_cluster_takes_its_most_common_name_and_ties_go_to_the_first_alphabetically():
+    r = recs(("Station Road Depot", *FIRE.values(), square(0, 0)), ("Station Road Depot", *FIRE.values(), square(40, 0)),
+             ("Annexe", *FIRE.values(), square(80, 0)),
+             ("Zulu", *FIRE.values(), square(1000, 0)), ("Alpha", *FIRE.values(), square(1040, 0)),
+             ("", *FIRE.values(), square(2000, 0)))
+    out, s = sites.assign_sites(r, candidates())
+    members = {g: tuple(grp.index) for g, grp in out.groupby("site_group")}
+    name_of = {members[g]: n for g, n in zip(s.site_group, s["name"])}
+    assert name_of == {(0, 1, 2): "Station Road Depot", (3, 4): "Alpha", (5,): ""}
+
+
+def test_clusters_are_numbered_in_a_stable_order_and_do_not_mix_building_types():
+    r = recs(("", *FIRE.values(), square(0, 0)), ("", *EDU.values(), square(10, 0)),      # a school beside a fire station
+             ("", *FIRE.values(), square(500, 0)))
+    out, s = sites.assign_sites(r, candidates())
+    assert out.loc[0, "site_group"] != out.loc[1, "site_group"]               # different type: not clustered together
+    assert sorted(s.site_group) == [1, 2, 3] and set(s.n_buildings) == {1}
+
+
+def test_cluster_outlines_are_unaffected_by_how_the_buffers_are_made():
+    r = recs(("", *FIRE.values(), square(0, 0)), ("", *FIRE.values(), square(40, 0)))
+    _, s = sites.assign_sites(r, candidates())
+    hull = square(0, 0).union(square(40, 0)).convex_hull.buffer(sites._c().cluster_gap_m / 2)
+    assert s.iloc[0].geometry.equals(hull)
+
+
 def test_overlapping_os_and_osm_site_polygons_are_one_site_keeping_the_os_name():
     r = recs(("A", *EDU.values(), square(20, 20)), ("B", *EDU.values(), square(50, 20)))
     cands = candidates(("OS School Name", "Education", "OS Functional Site", "fs1", box(0, 0, 100, 100)),
