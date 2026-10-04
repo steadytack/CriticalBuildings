@@ -11,7 +11,9 @@ Verification per site:  Verified | Unverified | Not covered
 """
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+import shapely
 from shapely.geometry import Point
 
 from critical_buildings import config, paths
@@ -34,19 +36,21 @@ def match_reference(ref, sites, site_names, categories):
     """Return list of (ref_index, site_group, distance, name_sim) for accepted matches."""
     sites = sites.reset_index(drop=True)
     sidx = sites.sindex
+    # plain arrays: indexing the frame row by row for every candidate is far slower than the matching itself
+    s_geom, s_type, s_group, s_name = (sites.geometry.to_numpy(), sites["building_type"].to_numpy(),
+                                       sites["site_group"].to_numpy(), sites["name"].to_numpy())
     matches = []
-    for ri, r in ref.iterrows():
-        cand = sidx.query(r.geometry.buffer(_c().max_distance_m), predicate="intersects")
+    for ri, geom, r_type, r_name in zip(ref.index, ref.geometry, ref.building_type, ref.ref_name):
+        cand = sidx.query(geom.buffer(_c().max_distance_m), predicate="intersects")
         scored = []
         for ci in cand:
-            s = sites.iloc[ci]
-            if not _compatible(r.building_type, s.building_type, categories):
+            if not _compatible(r_type, s_type[ci], categories):
                 continue
-            d = s.geometry.distance(r.geometry)
-            sname = site_names.get(s.site_group, s["name"])
-            nm = name_similarity(r.ref_name, sname) if sname else _c().close_min_name   # unnamed site: neutral
-            scored.append((s.site_group, d, nm, r.building_type == s.building_type,
-                           strict_similarity(r.ref_name, sname) if sname else 0.0))
+            d = s_geom[ci].distance(geom)
+            sname = site_names.get(s_group[ci], s_name[ci])
+            nm = name_similarity(r_name, sname) if sname else _c().close_min_name   # unnamed site: neutral
+            scored.append((s_group[ci], d, nm, r_type == s_type[ci],
+                           strict_similarity(r_name, sname) if sname else 0.0))
         near = [x for x in scored if x[1] <= _c().close_m]
         sole = [x for x in scored if x[3] and x[1] <= _c().sole_exact_m]
         ok = [x for x in scored
@@ -72,21 +76,33 @@ def _join(vals, sep=" | "):
 
 
 
-def explain_unverified(site, ref_all, ref_valid, categories):
-    """Say why a site has no authoritative match: closed per register, or the nearest candidate we did not accept."""
+class _Candidates:
+    """The register records `explain_unverified` searches, as arrays (built once, not per unverified site)."""
+
+    def __init__(self, ref_all, ref_valid):
+        self.closed = ref_all[(ref_all.ref_source == "DfE GIAS") & (ref_all.building_type == "IGNORE")
+                              & ref_all.status.astype(str).str.lower().str.startswith("closed")]
+        self.closed_geom = self.closed.geometry.to_numpy()
+        self.valid = ref_valid
+        self.valid_geom = ref_valid.geometry.to_numpy()
+
+
+def explain_unverified(site, ref_all, ref_valid, categories, candidates=None):
+    """Say why a site has no authoritative match: closed per register, or the nearest candidate we did not accept.
+
+    `candidates` (a _Candidates) lets a caller explaining many sites build the record arrays once."""
+    cand = candidates or _Candidates(ref_all, ref_valid)
     name = site["name"] if isinstance(site["name"], str) else ""
     if name and site.building_type in _c().school_types:
-        closed = ref_all[(ref_all.ref_source == "DfE GIAS") & (ref_all.building_type == "IGNORE")
-                         & ref_all.status.astype(str).str.lower().str.startswith("closed")]
-        for _, r in closed.iterrows():
-            d = site.geometry.distance(r.geometry)
-            if d <= _c().conflict_m and strict_similarity(r.ref_name, name) >= 0.9:
+        near = np.flatnonzero(shapely.distance(site.geometry, cand.closed_geom) <= _c().conflict_m)
+        for k in near:                   # only the closed schools within reach, in register order
+            r = cand.closed.iloc[k]
+            if strict_similarity(r.ref_name, name) >= 0.9:
                 return "Closed per register", f"DfE GIAS lists '{r.ref_name}' (URN {r.ref_id}) as closed"
     best = None
-    for _, r in ref_valid.iterrows():
-        d = site.geometry.distance(r.geometry)
-        if d > 300:
-            continue
+    dist = shapely.distance(site.geometry, cand.valid_geom)
+    for k in np.flatnonzero(~(dist > 300)):          # records within 300 m, in register order
+        r, d = cand.valid.iloc[k], dist[k]
         nm = name_similarity(r.ref_name, name) if name else 0
         if (nm >= 0.3 or _compatible(r.building_type, site.building_type, categories)) \
                 and (best is None or nm - d / 1000 > best[0]):
@@ -162,18 +178,19 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     sidx2 = sites_r.sindex
     done_sites, done_refs = set(mdf.site_group), set(mdf.ri)
     conflicts = []
-    for ri, r in ref.iterrows():
+    st_geom, st_type, st_group, st_name = (sites_r.geometry.to_numpy(), sites_r["building_type"].to_numpy(),
+                                           sites_r["site_group"].to_numpy(), sites_r["name"].to_numpy())
+    for ri, geom, r_type, r_name in zip(ref.index, ref.geometry, ref.building_type, ref.ref_name):
         if ri in done_refs:
             continue
-        for ci in sidx2.query(r.geometry.buffer(_c().conflict_m), predicate="intersects"):
-            st = sites_r.iloc[ci]
-            if st.site_group in done_sites or _compatible(r.building_type, st.building_type, categories):
+        for ci in sidx2.query(geom.buffer(_c().conflict_m), predicate="intersects"):
+            if st_group[ci] in done_sites or _compatible(r_type, st_type[ci], categories):
                 continue
-            d = st.geometry.distance(r.geometry)
-            if isinstance(st["name"], str) and st["name"] and strict_similarity(r.ref_name, st["name"]) >= 0.9 \
+            d = st_geom[ci].distance(geom)
+            if isinstance(st_name[ci], str) and st_name[ci] and strict_similarity(r_name, st_name[ci]) >= 0.9 \
                     and d <= _c().conflict_m:
-                conflicts.append((ri, st.site_group, d, 1.0))
-                done_sites.add(st.site_group)
+                conflicts.append((ri, st_group[ci], d, 1.0))
+                done_sites.add(st_group[ci])
                 break
     if conflicts:
         mdf = pd.concat([mdf, pd.DataFrame(conflicts, columns=mdf.columns)], ignore_index=True)
@@ -239,7 +256,9 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     if len(gaps):
         blds = building_footprints(boundary, area)
         bs = blds.sindex
-        for ri, r in gaps.iterrows():
+        blds_geom = blds.geometry.to_numpy()
+        os_name, os_type = orig_sites["name"].to_numpy(), orig_sites["building_type"].to_numpy()
+        for ri, r in zip(gaps.index, gaps.itertuples(index=False)):
             rule = rule_for.get(r.building_type)
             if rule is None:
                 continue
@@ -247,15 +266,15 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
             if not len(hit):                      # point just outside a building: snap to the nearest one
                 near = bs.query(r.geometry.buffer(_c().snap_m), predicate="intersects")
                 if len(near):
-                    hit = [min(near, key=lambda k: blds.geometry.iloc[k].distance(r.geometry))]
-            geom = blds.geometry.iloc[hit[0]] if len(hit) else r.geometry
+                    hit = [min(near, key=lambda k: blds_geom[k].distance(r.geometry))]
+            geom = blds_geom[hit[0]] if len(hit) else r.geometry
             # a gap is expected (these sources are more complete than OSM). Only doubt it if it has no footprint
             # or sits next to an existing, similarly named site (possible duplicate).
             reasons = [] if len(hit) else [f"{r.ref_source} point has no building within {_c().snap_m} m - check the location"]
             for ci in orig_idx.query(r.geometry.buffer(50), predicate="intersects"):
-                os_ = orig_sites.iloc[ci]
-                if os_["name"] and _compatible(r.building_type, os_.building_type, categories)                         and name_similarity(r.ref_name, os_["name"]) >= 0.5:
-                    reasons.append(f"Possible duplicate of existing site '{os_['name']}' ({os_.building_type})")
+                if os_name[ci] and _compatible(r.building_type, os_type[ci], categories) \
+                        and name_similarity(r.ref_name, os_name[ci]) >= 0.5:
+                    reasons.append(f"Possible duplicate of existing site '{os_name[ci]}' ({os_type[ci]})")
                     break
             new_recs.append({
                 "source": r.ref_source, "source_feature_id": f"{r.ref_source}:{r.ref_id}", "name": r.ref_name,
@@ -290,23 +309,28 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     covered = set(ref.building_type) - _c().not_covered
     offset = mdf.groupby("site_group").dist.min().round().to_dict()
     info = {}
+    site_pos = {}                                          # site_group -> position of its first row (a mask per site is quadratic)
+    for pos, g in enumerate(sites.site_group):
+        site_pos.setdefault(g, pos)
+    new_groups = {x["site_group"] for x in new_sites}
+    explain_on = _Candidates(ref_all if ref_all is not None else ref, ref)
     for g in sites.site_group:
         rr = by_site.get(g)
-        stype = sites.loc[sites.site_group == g, "building_type"].iloc[0]
+        stype = sites["building_type"].iloc[site_pos[g]]
         if rr is None or not len(rr):
             if stype not in covered:
                 info[g] = {"Verification": "Not covered"}
             elif g in moved_notes:
                 info[g] = {"Verification": "Unverified", "Verification Note": moved_notes[g]}
             else:
-                srow = sites.loc[sites.site_group == g].iloc[0]
-                v, note = explain_unverified(srow, ref_all if ref_all is not None else ref, ref, categories)
+                srow = sites.iloc[site_pos[g]]
+                v, note = explain_unverified(srow, ref_all if ref_all is not None else ref, ref, categories, explain_on)
                 info[g] = {"Verification": v, "Verification Note": note}
             continue
         cap_units = rr.capacity_unit.replace("", pd.NA).dropna().unique()
         cap = rr.capacity.dropna().astype(float).sum() if len(cap_units) == 1 else None
         info[g] = {
-            "Verification": "Verified" if g not in {x["site_group"] for x in new_sites} else "Authoritative only",
+            "Verification": "Verified" if g not in new_groups else "Authoritative only",
             "Verification Note": kept_notes.get(g) or (f"Matched {offset[g]:.0f} m from the authoritative point"
                                                        if offset.get(g, 0) > _c().close_m else ""),
             "Authoritative Distance (m)": offset.get(g),

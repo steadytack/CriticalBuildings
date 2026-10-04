@@ -7,6 +7,7 @@ Tier 3  Proximity cluster                 (same type, buildings within sites.clu
 OS and OSM site polygons of the same category that overlap by >= sites.merge_overlap are one site.
 """
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 from shapely.ops import unary_union
 
@@ -31,21 +32,26 @@ def _merge_candidates(cs):
         return i
 
     j = gpd.sjoin(cs[["geometry", "category"]], cs[["geometry", "category"]], predicate="intersects")
-    for i, row in j.iterrows():
-        k = int(row["index_right"])
-        if k <= i or cs.at[i, "category"] != cs.at[k, "category"]:
+    cat, geom = cs["category"].to_numpy(), cs.geometry.to_numpy()
+    for i, k in zip(j.index.to_numpy(), j["index_right"].to_numpy().astype(int)):
+        if k <= i or cat[i] != cat[k]:
             continue
-        a, b = cs.at[i, "geometry"], cs.at[k, "geometry"]
+        a, b = geom[i], geom[k]
         if a.intersection(b).area / max(min(a.area, b.area), 1e-9) >= _c().merge_overlap:
             parent[find(i)] = find(k)
-    cs["grp"] = [find(i) for i in range(len(cs))]
+    members = {}                                    # root -> candidate positions, in order
+    for i in range(len(cs)):
+        members.setdefault(find(i), []).append(i)
+    origin, names, cats = cs["origin"].to_numpy(), cs["name"].to_numpy(), cs["category"].to_numpy()
+    geoms, areas = cs.geometry.to_numpy(), cs.geometry.area.to_numpy()
     out = []
-    for g, grp in cs.groupby("grp"):
-        os_rows = grp[grp.origin == "OS Functional Site"]
-        base = os_rows.iloc[0] if len(os_rows) else grp.loc[grp.geometry.area.idxmax()]
-        name = next((n for n in [base["name"]] + list(os_rows["name"]) + list(grp["name"]) if n), "")
-        out.append({"name": name, "category": base.category, "origin": " + ".join(sorted(set(grp.origin))),
-                        "geometry": base.geometry})
+    for root in sorted(members):
+        idx = members[root]
+        os_idx = [i for i in idx if origin[i] == "OS Functional Site"]
+        base = os_idx[0] if os_idx else idx[int(np.nanargmax(areas[idx]))]       # else the largest polygon
+        name = next((n for n in [names[base]] + [names[i] for i in os_idx] + [names[i] for i in idx] if n), "")
+        out.append({"name": name, "category": cats[base], "origin": " + ".join(sorted(set(origin[idx]))),
+                    "geometry": geoms[base]})
     return gpd.GeoDataFrame(out, geometry="geometry", crs=27700)
 
 
@@ -79,11 +85,11 @@ def assign_sites(recs, site_candidates):
     if len(left) and sites:
         keep = merged.reset_index(drop=True)
         kidx = keep.sindex
-        for i, r in left.iterrows():
+        k_cat, k_name = keep["category"].to_numpy(), keep["name"].to_numpy()
+        for i, r in zip(left.index, left.itertuples(index=False)):
             for ci in kidx.query(r.geometry.buffer(_c().attach_m), predicate="intersects"):
-                row = keep.iloc[ci]
-                if (row.category == r.category and isinstance(row["name"], str) and row["name"]
-                        and row["name"].casefold() == str(r["name"]).casefold()):
+                if (k_cat[ci] == r.category and isinstance(k_name[ci], str) and k_name[ci]
+                        and k_name[ci].casefold() == str(r.name).casefold()):
                     g = site_gid.get(ci)
                     if g is not None:
                         recs.at[i, "site_group"] = g
@@ -116,12 +122,27 @@ def assign_sites(recs, site_candidates):
     cnt = recs.site_group.value_counts()
     single = recs.site_group.map(cnt) == 1
     recs.loc[single & ~recs.site_method.isin(["Single building"]), "site_method"] = "Single building"
+    # one row per site, summarised for all sites at once (a groupby over each site separately is slow with many sites)
+    def mode_per_site(col):
+        """Most common value of `col` per site; ties go to the smallest value (like Series.mode()[0])."""
+        n = recs.groupby(["site_group", col]).size().rename("n").reset_index()
+        return n.sort_values(["site_group", "n", col], ascending=[True, False, True]).drop_duplicates("site_group") \
+                .set_index("site_group")[col]
+
+    types, categories = mode_per_site("building_type"), mode_per_site("category")
+    size = recs.groupby("site_group").size()
+    best_rank = recs.importance.map(IMP_RANK).groupby(recs.site_group).min()
+    importance = best_rank.map({v: k for k, v in IMP_RANK.items()})
+    first_name = {}
+    for g, n in zip(recs.site_group, recs["name"]):
+        if n and g not in first_name:
+            first_name[g] = n
     rows = []
-    for g, m in recs.groupby("site_group"):
-        rows.append({"site_group": g, "name": sites[g]["name"] or next((n for n in m["name"] if n), ""),
-                         "building_type": m.building_type.mode().iloc[0], "category": m.category.mode().iloc[0],
-                         "importance": min(m.importance, key=IMP_RANK.get), "n_buildings": len(m),
-                         "method": sites[g]["method"] if len(m) > 1 else "Single building",
-                         "geometry": sites[g]["geometry"]})
+    for g in size.index:
+        rows.append({"site_group": g, "name": sites[g]["name"] or first_name.get(g, ""),
+                     "building_type": types[g], "category": categories[g],
+                     "importance": importance[g], "n_buildings": int(size[g]),
+                     "method": sites[g]["method"] if size[g] > 1 else "Single building",
+                     "geometry": sites[g]["geometry"]})
     sdf = gpd.GeoDataFrame(rows, geometry="geometry", crs=27700)
     return recs, sdf
