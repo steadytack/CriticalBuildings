@@ -9,6 +9,7 @@ OS and OSM site polygons of the same category that overlap by >= sites.merge_ove
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 from shapely.ops import unary_union
 
 from critical_buildings import config
@@ -55,6 +56,15 @@ def _merge_candidates(cs):
     return gpd.GeoDataFrame(out, geometry="geometry", crs=27700)
 
 
+def _most_common(names):
+    """The most frequent name; ties go to the alphabetically first (what Series.mode()[0] gave); '' if there are none."""
+    counts = {}
+    for n in names:
+        if isinstance(n, str):
+            counts[n] = counts.get(n, 0) + 1
+    return min(counts, key=lambda n: (-counts[n], n)) if counts else ""
+
+
 def assign_sites(recs, site_candidates):
     """Return (recs with 'site_group' and 'site_method', sites DataFrame keyed by site_group)."""
     recs = recs.copy()
@@ -72,13 +82,13 @@ def assign_sites(recs, site_candidates):
         hit = gpd.sjoin(rep, merged[["geometry", "category", "area"]], predicate="within")
         hit = hit[hit.category_left == hit.category_right].sort_values("area")
         hit = hit[~hit.index.duplicated(keep="first")]       # smallest containing site wins
-        for m_idx, grp in hit.groupby("index_right"):
+        m_name, m_origin, m_geom = merged["name"].to_numpy(), merged["origin"].to_numpy(), merged.geometry.to_numpy()
+        for m_idx in sorted(hit["index_right"].unique()):                  # one new site per polygon that holds buildings
             gid += 1
             site_gid[m_idx] = gid
-            row = merged.loc[m_idx]
-            sites[gid] = {"name": row["name"], "method": row.origin, "geometry": row.geometry}
-            recs.loc[grp.index, "site_group"] = gid
-            recs.loc[grp.index, "site_method"] = row.origin
+            sites[gid] = {"name": m_name[m_idx], "method": m_origin[m_idx], "geometry": m_geom[m_idx]}
+        recs.loc[hit.index, "site_group"] = [site_gid[m] for m in hit["index_right"]]       # one assignment, not one per site
+        recs.loc[hit.index, "site_method"] = [m_origin[m] for m in hit["index_right"]]
 
     # buildings just outside a site outline that carry the site's own name belong to that site
     left = recs[recs.site_group.isna() & (recs["name"].fillna("") != "")]
@@ -100,9 +110,13 @@ def assign_sites(recs, site_candidates):
     left = recs[recs.site_group.isna()]
     if len(left):
         key = left.category.where(left.category.isin(config.get().matching.loose_categories), left.building_type)
+        half_gap = _c().cluster_gap_m / 2
+        all_geom, all_name = recs.geometry.to_numpy(), recs["name"].to_numpy()
+        pos_of = pd.Series(range(len(recs)), index=recs.index)          # recs label -> position
+        set_idx, set_gid, set_method = [], [], []
         for k, grp in left.groupby(key):
-            buf = [g.buffer(_c().cluster_gap_m / 2) for g in grp.geometry]
-            u = unary_union(buf)
+            # quad_segs=16 is what Geometry.buffer() uses; shapely.buffer() defaults to 8 and would change the outlines
+            u = unary_union(shapely.buffer(grp.geometry.to_numpy(), half_gap, quad_segs=16))
             parts = list(u.geoms) if u.geom_type == "MultiPolygon" else [u]
             pg = gpd.GeoDataFrame({"p": range(len(parts))}, geometry=parts, crs=27700)
             pts = gpd.GeoDataFrame(geometry=grp.geometry.representative_point().values, crs=27700, index=grp.index)
@@ -110,13 +124,16 @@ def assign_sites(recs, site_candidates):
             j = j[~j.index.duplicated(keep="first")]
             for p, members in j.groupby("p"):
                 gid += 1
-                m = recs.loc[members.index]
-                method = "Single building" if len(m) == 1 else "Proximity cluster"
-                names = [n for n in m["name"] if n]
-                sites[gid] = {"name": pd.Series(names).mode().iloc[0] if names else "", "method": method,
-                                  "geometry": unary_union(list(m.geometry)).convex_hull.buffer(_c().cluster_gap_m / 2)}
-                recs.loc[members.index, "site_group"] = gid
-                recs.loc[members.index, "site_method"] = method
+                pos = pos_of[members.index].to_numpy()
+                method = "Single building" if len(pos) == 1 else "Proximity cluster"
+                sites[gid] = {"name": _most_common([n for n in all_name[pos] if n]), "method": method,
+                              "geometry": unary_union(list(all_geom[pos])).convex_hull.buffer(half_gap)}
+                set_idx += list(members.index)
+                set_gid += [gid] * len(pos)
+                set_method += [method] * len(pos)
+        if set_idx:                                                       # one assignment, not one per cluster
+            recs.loc[set_idx, "site_group"] = set_gid
+            recs.loc[set_idx, "site_method"] = set_method
 
     # single-member sites from tier 1/2 are really just one building
     cnt = recs.site_group.value_counts()
