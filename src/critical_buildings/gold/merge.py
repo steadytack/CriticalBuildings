@@ -43,24 +43,26 @@ def merge(osm, os_, prio):
     osm = osm.reset_index(drop=True)
     os_ = os_.reset_index(drop=True)
     cand = gpd.sjoin(os_[["geometry"]], osm[["geometry"]], predicate="dwithin", distance=max(_c().point_distance_by_type.values(), default=_c().point_distance_m))
+    # plain arrays: indexing the frames cell by cell for every candidate pair is what made this slow
+    os_cat, os_type, os_geom = os_["category"].to_numpy(), os_["building_type"].to_numpy(), os_.geometry.to_numpy()
+    osm_cat, osm_type, osm_geom = osm["category"].to_numpy(), osm["building_type"].to_numpy(), osm.geometry.to_numpy()
+    osm_rule = osm["rule_ref"].to_numpy()
+    loose = config.get().matching.loose_categories
     pairs = []
-    for os_i, row in cand.iterrows():
-        o = int(row["index_right"])
-        if os_.at[os_i, "category"] != osm.at[o, "category"]:
+    for os_i, o in zip(cand.index.to_numpy(), cand["index_right"].to_numpy().astype(int)):
+        if os_cat[os_i] != osm_cat[o]:
             continue
-        if (os_.at[os_i, "category"] not in config.get().matching.loose_categories
-                and os_.at[os_i, "building_type"] != osm.at[o, "building_type"]):
+        if os_cat[os_i] not in loose and os_type[os_i] != osm_type[o]:
             continue
         # a building 'next to' another is only the same building if the types agree; different types must overlap
-        m = _pair_method(os_.at[os_i, "geometry"], osm.at[o, "geometry"],
-                         _c().point_distance_by_type.get(os_.at[os_i, "building_type"], _c().point_distance_m))
-        if m and m[0] == "proximity" and os_.at[os_i, "building_type"] != osm.at[o, "building_type"]:
+        m = _pair_method(os_geom[os_i], osm_geom[o], _c().point_distance_by_type.get(os_type[os_i], _c().point_distance_m))
+        if m and m[0] == "proximity" and os_type[os_i] != osm_type[o]:
             m = None
         if m:
             pairs.append({"os": os_i, "osm": o, "method": m[0], "dist": m[1],
-                              "same_type": os_.at[os_i, "building_type"] == osm.at[o, "building_type"],
-                              "osm_area": osm.at[o, "geometry"].area,
-                              "osm_point": osm.at[o, "geometry"].geom_type == "Point"})
+                          "same_type": os_type[os_i] == osm_type[o],
+                          "osm_area": osm_geom[o].area,
+                          "osm_point": osm_geom[o].geom_type == "Point"})
     pr = pd.DataFrame(pairs)
     match = {}      # os index -> dict(osm=index, method=..., ncand=...)
     if len(pr):
@@ -69,12 +71,12 @@ def merge(osm, os_, prio):
         pts = pr[pr.osm_point].sort_values(["osm", "mrank", "dist"]).drop_duplicates("osm")
         pr = pd.concat([pr[~pr.osm_point], pts])
         pr = pr.sort_values(["os", "mrank", "same_type", "osm_area"], ascending=[True, True, False, True])
-        for os_i, grp in pr.groupby("os"):
-            best = grp.iloc[0]
-            tied = grp[(grp.mrank == best.mrank)]
-            # only a real ambiguity if the tied OSM candidates would classify the building differently
-            kinds = {osm.at[int(o), "rule_ref"] for o in tied.osm}
-            match[os_i] = {"osm": int(best.osm), "method": best.method, "ncand": len(kinds)}
+        best = pr.drop_duplicates("os").set_index("os")                       # the first (best-ranked) candidate per OS building
+        tied = pr[pr.mrank.to_numpy() == best.mrank.reindex(pr.os).to_numpy()]    # candidates as good as the best one
+        # only a real ambiguity if the tied OSM candidates would classify the building differently
+        ncand = pd.Series(osm_rule[tied.osm.to_numpy().astype(int)], index=tied.os.to_numpy()).groupby(level=0).nunique()
+        for os_i, osm_j, method in zip(best.index, best.osm, best.method):
+            match[os_i] = {"osm": int(osm_j), "method": method, "ncand": int(ncand[os_i])}
     used_osm = {m["osm"] for m in match.values()}
 
     recs = []
@@ -85,18 +87,19 @@ def merge(osm, os_, prio):
         kb = (prio.get(b.rule_ref, 50), IMP_RANK[b.importance])
         return b if kb < ka else a
 
-    for i, r in os_.iterrows():
+    osm_rows = list(osm.itertuples(index=False))        # row tuples: attribute access without building a Series per row
+    for i, r in enumerate(os_.itertuples(index=False)):
         m = match.get(i)
         if m is None:
-            recs.append({"source": "OS Important Buildings", "source_feature_id": r.source_id, "name": r["name"],
+            recs.append({"source": "OS Important Buildings", "source_feature_id": r.source_id, "name": r.name,
                              "base": r, "os_ref": r.rule_ref, "osm_ref": None, "method": "OS only", "confidence": "Medium",
                              "review": "", "geometry": r.geometry, "refs": r.matched_refs, "osm_building": ""})
             continue
-        o = osm.loc[m["osm"]]
+        o = osm_rows[m["osm"]]
         w = winner(r, o)
         reasons = []
         expected_prox = m["method"] == "proximity" and r.building_type in _c().point_distance_by_type
-        names_agree = name_similarity(r["name"], o["name"]) >= _c().name_agree if (r["name"] and o["name"]) else False
+        names_agree = name_similarity(r.name, o.name) >= _c().name_agree if (r.name and o.name) else False
         if m["method"] == "proximity" and not expected_prox and not names_agree:
             reasons.append("Proximity-only match (close by, no overlap, names differ or missing)")
         if m["ncand"] > 1:
@@ -104,18 +107,18 @@ def merge(osm, os_, prio):
         if r.rule_ref != o.rule_ref:
             reasons.append(f"OS rule {r.rule_ref} ({r.building_type}) vs OSM rule {o.rule_ref} ({o.building_type})")
         recs.append({"source": "Both", "source_feature_id": f"{r.source_id} / {o.source_id}",
-                         "name": r["name"] or o["name"], "base": w, "os_ref": r.rule_ref, "osm_ref": o.rule_ref,
+                         "name": r.name or o.name, "base": w, "os_ref": r.rule_ref, "osm_ref": o.rule_ref,
                          "method": "Overlap" if m["method"] == "overlap" else ("Proximity (names agree)" if names_agree else "Proximity"),
                          "confidence": "High" if m["method"] == "overlap" else ("Medium" if (expected_prox or names_agree) else "Low"),
                          "review": "; ".join(reasons), "osm_building": o.osm_building,
                          "geometry": o.geometry if (r.geometry.geom_type == "Point" and o.geometry.geom_type != "Point")
                          else r.geometry,
                          "refs": ";".join(sorted(set((r.matched_refs + ";" + o.matched_refs).split(";")), key=int))})
-    for j, o in osm.iterrows():
+    for j, o in enumerate(osm_rows):
         if j in used_osm:
             continue
         is_area = o.note.startswith("Area feature")      # a site area with no buildings found inside: expected, not a doubt
-        recs.append({"source": "OSM", "source_feature_id": o.source_id, "name": o["name"], "base": o, "os_ref": None,
+        recs.append({"source": "OSM", "source_feature_id": o.source_id, "name": o.name, "base": o, "os_ref": None,
                          "osm_ref": o.rule_ref, "method": "OSM area (no buildings)" if is_area else "OSM only",
                          "confidence": "Medium", "review": "",
                          "osm_building": o.osm_building,

@@ -107,8 +107,12 @@ def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
     osm_rules = [t for t in tags if t.source == "OSM"]
     feats = load_elements(paths.bronze_file("osm_overpass", "osm_features.json", area=area))
     rows, areas, sites = [], [], []
-    for _, f in feats.iterrows():
-        hits = [r for r in osm_rules if _osm_match(f.tags, r)]
+    rules_by_key = {}
+    for r in osm_rules:
+        rules_by_key.setdefault(r.key, []).append(r)
+    for f in feats.itertuples(index=False):
+        # only rules whose tag key the feature has (the winner is picked by priority, so hit order does not matter)
+        hits = [r for k in f.tags for r in rules_by_key.get(k, ()) if _osm_match(f.tags, r)]
         if not hits:
             continue
         refs = {h.rule_ref for h in hits}
@@ -160,7 +164,7 @@ def load_os_sites(tags, boundary, area=paths.DEFAULT_AREA):
     os_rules = {(t.key, t.value): t for t in tags if t.source == "OS"}
     g = _read_layer("FunctionalSite", boundary, area)
     rows = []
-    for _, r in g.iterrows():
+    for r in g.itertuples(index=False):
         rule = next((os_rules[(r.SITETHEME, c.strip())] for c in str(r.CLASSIFICA).split(",")
                      if (r.SITETHEME, c.strip()) in os_rules), None)
         if rule:
@@ -184,7 +188,7 @@ def classify_os(tags, boundary, area=paths.DEFAULT_AREA):
     for layer, fixed_theme in layers:
         g = _read_layer(layer, boundary, area)
         total += len(g)
-        for _, r in g.iterrows():
+        for r in g.itertuples(index=False):
             rule = os_rules.get((fixed_theme or r.BUILDGTHEM, r.CLASSIFICA))
             if rule:
                 rows.append(_row("OS Important Buildings", r.ID, r.DISTNAME or "", rule, {rule.rule_ref}, r.geometry))
@@ -227,29 +231,44 @@ def _norm_pc(x):
 
 
 @functools.lru_cache(maxsize=1)
-def postcode_points():
-    """Postcode -> (easting, northing) from OS Code-Point Open."""
+def _postcode_table():
+    """All Code-Point Open postcodes (about 1.7 million) as a table indexed by normalised postcode, columns EA / NO."""
+    wanted = ("PC", "EA", "NO")          # postcode, easting, northing
     with zipfile.ZipFile(paths.bronze_file("os_codepoint_open", "codepo_gb.zip")) as z:
         cols = pd.read_csv(z.open("Doc/Code-Point_Open_Column_Headers.csv"), header=None).iloc[0].tolist()
-        frames = [pd.read_csv(z.open(n), header=None, names=cols)
+        pos = [cols.index(c) for c in wanted]
+        assert pos == sorted(pos), "Code-Point column order changed"        # the reader keeps file order
+        frames = [pd.read_csv(z.open(n), header=None, names=list(wanted), usecols=pos, engine="pyarrow")
                   for n in z.namelist() if n.startswith("Data/CSV/") and n.endswith(".csv")]
     cp = pd.concat(frames)
-    return dict(zip(cp["PC"].map(_norm_pc), zip(cp["EA"], cp["NO"])))   # PC = postcode, EA/NO = easting/northing
+    cp.index = cp["PC"].str.replace(" ", "", regex=False).str.upper()
+    return cp[~cp.index.duplicated(keep="last")][["EA", "NO"]]
+
+
+def postcode_points(wanted=None):
+    """Postcode -> (easting, northing) from OS Code-Point Open, for the normalised postcodes in `wanted` (all if None)."""
+    table = _postcode_table()
+    if wanted is not None:
+        table = table[table.index.isin(list(wanted))]
+    return dict(zip(table.index, zip(table["EA"], table["NO"])))
 
 
 def _ods():
     """ODS lookups: code -> dict(name, postcode, status, parent, kind) from ets, epraccur and etr."""
-    etr = pd.read_csv(paths.bronze_file("nhs_ods", "etr.csv"), header=None, dtype=str).fillna("")
-    trust = dict(zip(etr[0], etr[1]))
+    def columns(name, *positions):
+        """The given columns of an ODS file as plain Python lists of strings ('' where empty): only these are parsed."""
+        df = pd.read_csv(paths.bronze_file("nhs_ods", name), header=None, dtype=str, usecols=list(positions)).fillna("")
+        return [df[p].tolist() for p in positions]
+
+    code, trust_name = columns("etr.csv", 0, 1)
+    trust = dict(zip(code, trust_name))
     out = {}
-    ets = pd.read_csv(paths.bronze_file("nhs_ods", "ets.csv"), header=None, dtype=str).fillna("")
-    for r in ets.itertuples(index=False):
-        out[r[0]] = {"name": r[1], "postcode": r[9], "status": "Closed" if r[11] else "Active",
-                         "parent": trust.get(r[14], r[14]), "kind": "ets"}
-    gp = pd.read_csv(paths.bronze_file("nhs_ods", "epraccur.csv"), header=None, dtype=str).fillna("")
-    for r in gp.itertuples(index=False):
-        out.setdefault(r[0], {"name": r[1], "postcode": r[9], "status": "Active" if r[12] == "ACTIVE" else "Closed",
-                                  "parent": r[14], "kind": "epraccur"})
+    for code, name, postcode, closed, parent in zip(*columns("ets.csv", 0, 1, 9, 11, 14)):
+        out[code] = {"name": name, "postcode": postcode, "status": "Closed" if closed else "Active",
+                     "parent": trust.get(parent, parent), "kind": "ets"}
+    for code, name, postcode, status, parent in zip(*columns("epraccur.csv", 0, 1, 9, 12, 14)):
+        out.setdefault(code, {"name": name, "postcode": postcode, "status": "Active" if status == "ACTIVE" else "Closed",
+                              "parent": parent, "kind": "epraccur"})
     return out
 
 
@@ -276,7 +295,7 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
     g = pd.read_csv(paths.bronze_file("dfe_gias", "edubasealldata.csv"), encoding="cp1252", low_memory=False).dropna(
         subset=["Easting", "Northing"])
     g = g[gpd.GeoSeries(gpd.points_from_xy(g.Easting, g.Northing), crs=27700, index=g.index).within(boundary)]
-    for _, r in g.iterrows():
+    for r, pt in zip(g.to_dict("records"), gpd.points_from_xy(g.Easting, g.Northing)):      # dicts and one point array: no per-row Series
         t = map_type("DfE", r, mapping)
         if t in (None, "IGNORE"):
             dropped["unmapped" if t is None else "ignored"] += 1
@@ -285,13 +304,13 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
             t = "IGNORE" if t else "UNMAPPED"
         pupils = r.get("NumberOfPupils")
         trust = r.get("Trusts (name)")
-        rows.append({"ref_source": "DfE GIAS", "ref_id": str(r.URN), "ref_name": r.EstablishmentName, "building_type": t,
-                         "status": r["EstablishmentStatus (name)"], "capacity": pupils if pd.notna(pupils) else None,
-                         "capacity_unit": "pupils",
-                         "detail": f"{r['TypeOfEstablishment (name)']} / {r['PhaseOfEducation (name)']}",
-                         "rating": "", "provider": trust if pd.notna(trust) else "",
-                         "postcode": r.get("Postcode", ""), "uprn": "", "ods_code": "", "ods_status": "", "ods_parent": "",
-                         "geometry": gpd.points_from_xy([r.Easting], [r.Northing])[0]})
+        rows.append({"ref_source": "DfE GIAS", "ref_id": str(r["URN"]), "ref_name": r["EstablishmentName"], "building_type": t,
+                     "status": r["EstablishmentStatus (name)"], "capacity": pupils if pd.notna(pupils) else None,
+                     "capacity_unit": "pupils",
+                     "detail": f"{r['TypeOfEstablishment (name)']} / {r['PhaseOfEducation (name)']}",
+                     "rating": "", "provider": trust if pd.notna(trust) else "",
+                     "postcode": r.get("Postcode", ""), "uprn": "", "ods_code": "", "ods_status": "", "ods_parent": "",
+                     "geometry": pt})
 
     # ---- CQC (HSCA active locations) ----
     c = _cqc_locations(area)
@@ -301,7 +320,7 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
     inside = cg.within(boundary)
     c, cg = c[inside], cg[inside]
     cqc_ods = set()
-    for i, r in c.iterrows():
+    for r, pt in zip(c.to_dict("records"), cg):          # c and cg were filtered together, so they line up
         code = str(r["Location ODS Code"]) if pd.notna(r["Location ODS Code"]) else ""
         t = map_type("CQC", r, mapping)
         if t in (None, "IGNORE"):
@@ -321,10 +340,10 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
                          "postcode": r["Location Postal Code"],
                          "uprn": str(int(r["Location UPRN ID"])) if pd.notna(r["Location UPRN ID"]) else "",
                          "ods_code": code, "ods_status": o.get("status", ""), "ods_parent": o.get("parent", ""),
-                         "geometry": cg[i]})
+                         "geometry": pt})
 
     # ---- NHS ODS trust sites not already known to CQC (located by postcode) ----
-    pc = postcode_points()
+    pc = postcode_points({_norm_pc(o["postcode"]) for o in ods.values() if o["kind"] == "ets"})
     for code, o in ods.items():
         if o["kind"] != "ets" or o["status"] != "Active" or code in cqc_ods:
             continue
@@ -382,7 +401,9 @@ def build(rules, area=paths.DEFAULT_AREA):
     ref = ref_all[~ref_all.building_type.isin(["IGNORE", "UNMAPPED"])].copy()
     progress.note("register records in area", len(ref_all))
     progress.note("register records mapped to a building type", len(ref))
-    return SilverTables(area, boundary, osm, os_, os_total, site_cands, ref_all, ref, postcode_points())
+    # gold only looks up the postcodes of register records, so keep just those (not all 1.7 million)
+    postcodes = postcode_points({_norm_pc(p) for p in ref_all.postcode})
+    return SilverTables(area, boundary, osm, os_, os_total, site_cands, ref_all, ref, postcodes)
 
 
 # ------------------------------------------------------------------ caching: one silver build per distinct input set
