@@ -45,10 +45,10 @@ def canonical_hash(csv_path, key="Building ID", drop=VOLATILE):
     return hashlib.sha256(df.to_csv(index=False).encode("utf-8")).hexdigest()
 
 
-def bronze_inputs():
-    """The snapshots currently marked LATEST for every source, with file checksums."""
+def bronze_inputs(area=None):
+    """The snapshots currently marked LATEST for every source (for `area`, when given), with file checksums."""
     out = []
-    for m in sources.all_manifests():
+    for m in sources.all_manifests(area):
         out.append({"source": m["source"], "area": m.get("area"), "snapshot": m["snapshot"], "retrieved_at": m["retrieved_at"],
                     "licence": m["licence"], "files": [{"name": f["name"], "sha256": f["sha256"], "bytes": f["bytes"]} for f in m["files"]]})
     return out
@@ -64,7 +64,7 @@ def build_lineage(ctx, rules, silver_key, silver_reused, gold, dest, deliverable
         "started_at": ctx.started_at, "tool_version": __version__, "git": git_info(),
         "rules": {"version_id": rules.version_id, "label": rules.label},
         "config": {"settings_hash": settings_hash, "area_hash": area_hash},
-        "bronze": {"key": paths.bronze_key(ctx.area), "snapshots": bronze_inputs()},
+        "bronze": {"key": paths.bronze_key(ctx.area), "snapshots": bronze_inputs(ctx.area)},
         "silver": {"key": silver_key, "reused": silver_reused},
         "gold": {
             "buildings": int(len(df)), "sites": int(len(gold.sites_out)), "new_building_ids": int(gold.new_ids),

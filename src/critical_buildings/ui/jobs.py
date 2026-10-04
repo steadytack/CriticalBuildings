@@ -13,6 +13,7 @@ import sys
 from datetime import datetime
 
 from critical_buildings import paths, progress
+from critical_buildings.locks import pid_alive
 
 _WRAPPER = ("import subprocess, sys; out = open(sys.argv[1], 'w', encoding='utf-8'); "
             "p = subprocess.run(sys.argv[3:], stdout=out, stderr=subprocess.STDOUT); out.close(); "
@@ -33,26 +34,6 @@ def clean_output(text):
     """Command output without the harmless GDAL plugin noise lines and runs of blank lines."""
     keep = [ln for ln in text.splitlines() if not any(n in ln for n in NOISE)]
     return "\n".join(ln for i, ln in enumerate(keep) if ln.strip() or (i and keep[i - 1].strip())).strip()
-
-
-def pid_alive(pid):
-    if not pid:
-        return False
-    if os.name == "nt":
-        import ctypes
-        kernel = ctypes.windll.kernel32
-        handle = kernel.OpenProcess(0x1000, False, int(pid))          # PROCESS_QUERY_LIMITED_INFORMATION
-        if not handle:
-            return False
-        code = ctypes.c_ulong()
-        kernel.GetExitCodeProcess(handle, ctypes.byref(code))
-        kernel.CloseHandle(handle)
-        return code.value == 259                                       # STILL_ACTIVE
-    try:
-        os.kill(int(pid), 0)
-        return True
-    except OSError:
-        return False
 
 
 def start_job(label, *cli_args):

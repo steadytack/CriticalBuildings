@@ -4,7 +4,7 @@ and the gold build that strings the whole stage together.
 Pure function of (silver tables, rule set, human decisions + identity registries in the control store).
 """
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import geopandas as gpd
 import numpy as np
@@ -22,8 +22,11 @@ log = logging.getLogger(__name__)
 # Stable identities: Building IDs and Site IDs survive reruns (registries in the control store)
 # ====================================================================================================
 
-def assign_ids(recs, today, store, run_id):
-    """Keep Building IDs stable across runs (match on OS id, then OSM id, then footprint overlap)."""
+def assign_ids(recs, today, store, run_id, pending=None):
+    """Keep Building IDs stable across runs (match on OS id, then OSM id, then footprint overlap).
+
+    The registry is written straight away unless `pending` (a dict) is given: then the write is left in it for
+    store.commit_identities, to be applied only once the whole run has succeeded."""
     recs = recs.copy()
     recs["os_key"] = recs.source_feature_id.str.split(" / ").str[0].where(recs.source != "OSM")
     recs["osm_key"] = recs.source_feature_id.str.split(" / ").str[-1].where(recs.source != "OS Important Buildings")
@@ -35,33 +38,37 @@ def assign_ids(recs, today, store, run_id):
     nxt = (reg.building_id.str[5:].astype(int).max() + 1) if len(reg) else 1
     ids = []
     taken = set()
-    for _, r in recs.iterrows():
-        b = by_os.get(r.os_key) if isinstance(r.os_key, str) else None
-        if b is None and isinstance(r.osm_key, str) and r.source == "OSM":
-            b = by_osm.get(r.osm_key)
-        if b is None and isinstance(r.osm_key, str) and r.source == "Both":
-            b = by_osm.get(r.osm_key)          # was OSM-only last run, now also matched to OS
+    for os_key, osm_key, source in zip(recs.os_key, recs.osm_key, recs.source):
+        b = by_os.get(os_key) if isinstance(os_key, str) else None
+        if b is None and isinstance(osm_key, str) and source == "OSM":
+            b = by_osm.get(osm_key)
+        if b is None and isinstance(osm_key, str) and source == "Both":
+            b = by_osm.get(osm_key)          # was OSM-only last run, now also matched to OS
         if b in taken:
             b = None
         ids.append(b)
         if b:
             taken.add(b)
     # footprint-overlap fallback for the rest (e.g. OSM feature redrawn under a new id)
-    if len(reg) and any(i is None for i in ids):
-        old = gpd.GeoSeries(gpd.GeoSeries.from_wkt(reg.wkt), crs=27700)
-        for n, (i, r) in enumerate(zip(ids, recs.itertuples())):
-            if i is not None:
+    todo = [n for n, i in enumerate(ids) if i is None]
+    if len(reg) and todo:
+        old = gpd.GeoSeries(gpd.GeoSeries.from_wkt(reg.wkt), crs=27700).reset_index(drop=True)
+        old_ids = reg.building_id.to_numpy()
+        geoms = recs.geometry.iloc[todo].reset_index(drop=True)
+        # one spatial-index query for every unmatched record (not a scan of the whole registry per record);
+        # pairs are visited record by record, registry order within a record, so the result is deterministic
+        qi, ti = old.sindex.query(geoms.values, predicate="intersects")
+        order = np.lexsort((ti, qi))
+        done = set()
+        for q, t in zip(qi[order], ti[order]):
+            cand = old_ids[t]
+            if q in done or cand in taken:
                 continue
-            hit = old[old.intersects(r.geometry)]
-            for k in hit.index:
-                cand = reg.at[k, "building_id"]
-                if cand in taken:
-                    continue
-                ov = old[k].intersection(r.geometry).area / max(min(old[k].area, r.geometry.area), 1e-9)
-                if ov >= 0.5:
-                    ids[n] = cand
-                    taken.add(cand)
-                    break
+            g, o = geoms.iloc[q], old.iloc[t]
+            if o.intersection(g).area / max(min(o.area, g.area), 1e-9) >= 0.5:
+                ids[todo[q]] = cand
+                taken.add(cand)
+                done.add(q)
     new = 0
     for n, i in enumerate(ids):
         if i is None:
@@ -71,14 +78,18 @@ def assign_ids(recs, today, store, run_id):
         created.setdefault(ids[n], str(today))
     recs["Building ID"] = ids
     recs["Created Date"] = recs["Building ID"].map(created)
-    store.save_building_registry(pd.DataFrame(dict(building_id=recs["Building ID"], os_key=recs.os_key,
-                                                   osm_key=recs.osm_key, created=recs["Created Date"],
-                                                   wkt=recs.geometry.to_wkt())), run_id)
+    registry = pd.DataFrame(dict(building_id=recs["Building ID"], os_key=recs.os_key, osm_key=recs.osm_key,
+                                 created=recs["Created Date"], wkt=recs.geometry.to_wkt()))
+    if pending is None:
+        store.save_building_registry(registry, run_id)
+    else:
+        pending["buildings"] = registry
     return recs, new
 
 
-def assign_site_ids(recs, sites, today, store, run_id):
-    """Stable Site IDs: a site keeps the ID most of its buildings were last assigned (remembered in the registry)."""
+def assign_site_ids(recs, sites, today, store, run_id, pending=None):
+    """Stable Site IDs: a site keeps the ID most of its buildings were last assigned (remembered in the registry).
+    `pending` works as in assign_ids."""
     old_site = store.building_site_map()
     reg = store.site_registry_df()
     created = dict(zip(reg.site_id, reg.created))
@@ -98,8 +109,13 @@ def assign_site_ids(recs, sites, today, store, run_id):
     sites = sites.copy()
     sites["Site ID"] = sites.site_group.map(mapping)
     sites["Created Date"] = sites["Site ID"].map(created)
-    store.save_site_registry({sid: created[sid] for sid in mapping.values()}, run_id)
-    store.set_building_sites(dict(zip(recs["Building ID"], recs["Site ID"])))
+    site_created = {sid: created[sid] for sid in mapping.values()}
+    building_sites = dict(zip(recs["Building ID"], recs["Site ID"]))
+    if pending is None:
+        store.save_site_registry(site_created, run_id)
+        store.set_building_sites(building_sites)
+    else:
+        pending["sites"], pending["building_sites"] = site_created, building_sites
     return recs, sites
 
 
@@ -161,7 +177,12 @@ def quality_band(score):
 # ====================================================================================================
 
 def diff_runs(prev, cur):
-    """Compare two runs by Building ID. Returns a DataFrame of added / removed / reclassified / source changes."""
+    """Compare two runs by Building ID. Returns a DataFrame of added / removed / reclassified / source changes.
+
+    The previous run's buildings.csv holds live rows only, so excluded rows of `cur` are left out: excluding a building
+    shows as Removed, and an already-excluded one is not reported as Added on every run."""
+    if "Excluded" in cur:
+        cur = cur[~cur["Excluded"].astype(bool)]
     p = prev.set_index("Building ID")
     c = cur.set_index("Building ID")
     rows = []
@@ -299,6 +320,7 @@ class GoldResult:
     new_ids: int
     ref_gaps: object
     ref_matches: object
+    identities: dict = field(default_factory=dict)    # pending registry writes (see store.commit_identities)
 
 
 def build(silver, rules, store, run_id, today, previous_buildings=None, area=paths.DEFAULT_AREA):
@@ -316,8 +338,9 @@ def build(silver, rules, store, run_id, today, previous_buildings=None, area=pat
     progress.note("register records matched to a site", int(ref_matches.ri.nunique()))
     progress.note("register records added as new buildings", len(ref_gaps))
     progress.step("Assigning stable Building and Site IDs")
-    recs, new_ids = assign_ids(recs, today, store, run_id)
-    recs, sites_df = assign_site_ids(recs, sites_df, today, store, run_id)
+    identities = {}      # registry writes, applied by runs.finish once the run has succeeded
+    recs, new_ids = assign_ids(recs, today, store, run_id, identities)
+    recs, sites_df = assign_site_ids(recs, sites_df, today, store, run_id, identities)
     progress.note("new building IDs", new_ids)
     progress.step("Assigning building roles, applying decisions and scoring quality")
     recs = roles.assign_roles(recs, rules.role)
@@ -327,4 +350,4 @@ def build(silver, rules, store, run_id, today, previous_buildings=None, area=pat
     progress.step("Comparing with the previous run")
     changes = diff_runs(previous_buildings, df) if previous_buildings is not None else None
     progress.note("changes vs previous run", "no previous run" if changes is None else len(changes))
-    return GoldResult(df, sites_out, sites_df, changes, new_ids, ref_gaps, ref_matches)
+    return GoldResult(df, sites_out, sites_df, changes, new_ids, ref_gaps, ref_matches, identities)

@@ -106,7 +106,7 @@ def building_footprints(boundary, area=paths.DEFAULT_AREA):
         return gpd.read_file(cache)
     cache = paths.silver_conformed_dir(area) / "os_buildings.gpkg"
     frames = []
-    for f in paths.os_layer_paths("Building", tiles=sorted(config.load_area(area)["os_grid_squares"])):
+    for f in paths.os_layer_paths("Building", tiles=sorted(config.load_area(area)["os_grid_squares"]), area=area):
         g = gpd.read_file(f, columns=["ID"], bbox=tuple(boundary.bounds))
         frames.append(g)
     b = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs=27700)

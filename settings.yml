@@ -130,6 +130,7 @@ sources:
   os_open_map_local:
     name: OS Open Map Local
     kind: download
+    area_scoped: true            # the grid squares differ per area: os_open_map_local__<area>
     url: "https://api.os.uk/downloads/v1/products/OpenMapLocal/downloads?area={tile}&format=ESRI%C2%AE+Shapefile&redirect"
     licence: Open Government Licence v3.0
     attribution: Contains OS data (c) Crown copyright and database right 2026

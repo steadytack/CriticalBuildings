@@ -73,9 +73,9 @@
       "Verification Note",
       "Verification Override"
     ],
-    "file": "critical_buildings.csv",
+    "file": "buildings.csv",
     "rows": 3517,
-    "sha256": "03efe84839600e144eafdbdf967a33b265a726b8a38da11c1f39a9f1dff47910"
+    "sha256": "788532b6e90baff78a59523a0771b75f0984ace5b379154cae0cf0181e5c0bc9"
   },
   "counts": {
     "by_building_role": {
@@ -134,9 +134,9 @@
       "Verification",
       "Verification Note"
     ],
-    "file": "critical_sites.csv",
+    "file": "sites.csv",
     "rows": 1096,
-    "sha256": "ef1e9a7cc693653a5a36611054f0dae202e2b72103647e74752c64d4a652f87b"
+    "sha256": "58064e40bdefb0385a0a504ea76b79dded270c21d568382d04ddfeb5c7f226a8"
   },
   "summary": {
     "columns": [
@@ -158,8 +158,8 @@
       "Source",
       "Verification"
     ],
-    "file": "critical_buildings_summary.csv",
+    "file": "buildings.csv",
     "rows": 3517,
-    "sha256": "b84d182ea764048c92d4108c09cef75518165a9fca2b58b70f0cf08e380daf09"
+    "sha256": "0dc2e5ada7d884f7e68e204b7ab8eff70603fde0e1369d3968dceb0ff0985dc3"
   }
 }

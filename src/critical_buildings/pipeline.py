@@ -7,7 +7,7 @@ import datetime as dt
 import importlib
 import logging
 
-from critical_buildings import config, paths, progress, publish, runs
+from critical_buildings import config, locks, paths, progress, publish, runs, sources
 from critical_buildings import silver as silver_build
 from critical_buildings.control.store import ControlStore
 from critical_buildings.gold import steps as gold_steps
@@ -24,8 +24,12 @@ def check(area=paths.DEFAULT_AREA, store=None, rules_version=None):
     except Exception as e:                                   # noqa: BLE001 - no published rule set yet
         return problems + [str(e)]
     problems += rules.errors
+    legacy = sources.legacy_unscoped_sources(area)
     for source in ("osm_overpass", "os_open_map_local", "os_codepoint_open", "dfe_gias", "cqc_hsca", "nhs_ods"):
-        if not paths.latest_snapshot(source, area if source == "osm_overpass" else None):
+        if source in legacy:
+            problems.append(f"The '{source}' data is in the old shared folder. Move it to this area with: "
+                            f"python -m critical_buildings migrate-bronze --area {area}")
+        elif not paths.latest_snapshot(source, paths.scoped_area(source, area)):
             problems.append(f"No bronze data for '{source}'. Run: python -m critical_buildings fetch")
     return problems
 
@@ -55,7 +59,13 @@ def run(area=paths.DEFAULT_AREA, run_type="dev", notes="", reuse_silver=True, st
     """Build the area. Each run gets its own immutable gold folder and a row in the run registry.
 
     rules_version: a published rule set number to use instead of the latest (to reproduce an old run).
-    Returns a summary dict. On failure the run is marked failed and no partial output is left behind."""
+    Returns a summary dict. On failure the run is marked failed and no partial output is left behind.
+    Raises locks.LockedError if a fetch, run, archive or release is already in progress."""
+    with locks.pipeline_lock("run"):
+        return _run(area, run_type, notes, reuse_silver, store, rules_version)
+
+
+def _run(area, run_type, notes, reuse_silver, store, rules_version):
     store = store or ControlStore()
     rules = store.ruleset(rules_version).require_valid()
     previous_run_id, previous = runs.load_previous(area)

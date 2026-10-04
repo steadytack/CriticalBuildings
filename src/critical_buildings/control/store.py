@@ -247,7 +247,8 @@ class ControlStore:
         return df[list(OVERRIDE_CSV_NAMES)].rename(columns=OVERRIDE_CSV_NAMES)
 
     def save_overrides(self, rows, user, reason):
-        """Insert/update override rows (dicts with the table's column names)."""
+        """Insert/update override rows (dicts with the table's column names). Columns a row does not mention keep
+        their stored value, so a partial save never clears other decisions on the same building."""
         if not reason or not str(reason).strip():
             raise ControlError("A reason is required for every change.")
         with self.conn() as c:
@@ -257,8 +258,9 @@ class ControlStore:
                 new["decided_at"] = new.get("decided_at") or now()
                 bid = new["building_id"]
                 old = c.execute("SELECT * FROM override WHERE building_id = ?", (bid,)).fetchone()
-                names = ", ".join(new)
-                c.execute(f"INSERT OR REPLACE INTO override ({names}) VALUES ({', '.join('?' * len(new))})", tuple(new.values()))
+                merged = {**dict(old), **new} if old else new
+                names = ", ".join(merged)
+                c.execute(f"INSERT OR REPLACE INTO override ({names}) VALUES ({', '.join('?' * len(merged))})", tuple(merged.values()))
                 self._log(c, user, "override", bid, "update" if old else "insert", dict(old) if old else None, new, reason)
 
     def delete_override(self, building_id, user, reason):
@@ -277,18 +279,20 @@ class ControlStore:
     def save_building_registry(self, df, run_id):
         """df columns: building_id, os_key, osm_key, created, wkt. New IDs are inserted, seen ones refreshed,
         IDs absent from this run are marked retired (never deleted)."""
-        set(df["building_id"])
         with self.conn() as c:
-            for r in df.itertuples(index=False):
-                os_key = r.os_key if isinstance(r.os_key, str) else None
-                osm_key = r.osm_key if isinstance(r.osm_key, str) else None
-                c.execute(
-                    "INSERT INTO building_registry (building_id, os_key, osm_key, created, wkt, first_seen_run, last_seen_run, retired_run) "
-                    "VALUES (?,?,?,?,?,?,?,NULL) ON CONFLICT(building_id) DO UPDATE SET os_key = excluded.os_key, "
-                    "osm_key = excluded.osm_key, wkt = excluded.wkt, last_seen_run = excluded.last_seen_run, retired_run = NULL",
-                    (r.building_id, os_key, osm_key, r.created, r.wkt, run_id, run_id))
-            c.execute("UPDATE building_registry SET retired_run = ? WHERE retired_run IS NULL AND last_seen_run != ?",
-                      (run_id, run_id))
+            self._save_building_registry(c, df, run_id)
+
+    def _save_building_registry(self, c, df, run_id):
+        for r in df.itertuples(index=False):
+            os_key = r.os_key if isinstance(r.os_key, str) else None
+            osm_key = r.osm_key if isinstance(r.osm_key, str) else None
+            c.execute(
+                "INSERT INTO building_registry (building_id, os_key, osm_key, created, wkt, first_seen_run, last_seen_run, retired_run) "
+                "VALUES (?,?,?,?,?,?,?,NULL) ON CONFLICT(building_id) DO UPDATE SET os_key = excluded.os_key, "
+                "osm_key = excluded.osm_key, wkt = excluded.wkt, last_seen_run = excluded.last_seen_run, retired_run = NULL",
+                (r.building_id, os_key, osm_key, r.created, r.wkt, run_id, run_id))
+        c.execute("UPDATE building_registry SET retired_run = ? WHERE retired_run IS NULL AND last_seen_run != ?",
+                  (run_id, run_id))
 
     def building_site_map(self):
         """{building_id: site_id it was last assigned to} (empty strings and NULLs are left out)."""
@@ -299,8 +303,11 @@ class ControlStore:
     def set_building_sites(self, mapping):
         """mapping: {building_id: site_id}. Called after Site IDs are assigned."""
         with self.conn() as c:
-            c.executemany("UPDATE building_registry SET site_id = ? WHERE building_id = ?",
-                          [(site, bid) for bid, site in mapping.items()])
+            self._set_building_sites(c, mapping)
+
+    def _set_building_sites(self, c, mapping):
+        c.executemany("UPDATE building_registry SET site_id = ? WHERE building_id = ?",
+                      [(site, bid) for bid, site in mapping.items()])
 
     def site_registry_df(self):
         df = self.table_df("site_registry", "site_id")
@@ -309,11 +316,26 @@ class ControlStore:
     def save_site_registry(self, created, run_id):
         """created: {site_id: created_date}. Same append-only rules as buildings."""
         with self.conn() as c:
-            for sid, when in created.items():
-                c.execute("INSERT INTO site_registry (site_id, created, first_seen_run, last_seen_run, retired_run) VALUES (?,?,?,?,NULL) "
-                          "ON CONFLICT(site_id) DO UPDATE SET last_seen_run = excluded.last_seen_run, retired_run = NULL",
-                          (sid, when, run_id, run_id))
-            c.execute("UPDATE site_registry SET retired_run = ? WHERE retired_run IS NULL AND last_seen_run != ?", (run_id, run_id))
+            self._save_site_registry(c, created, run_id)
+
+    def _save_site_registry(self, c, created, run_id):
+        for sid, when in created.items():
+            c.execute("INSERT INTO site_registry (site_id, created, first_seen_run, last_seen_run, retired_run) VALUES (?,?,?,?,NULL) "
+                      "ON CONFLICT(site_id) DO UPDATE SET last_seen_run = excluded.last_seen_run, retired_run = NULL",
+                      (sid, when, run_id, run_id))
+        c.execute("UPDATE site_registry SET retired_run = ? WHERE retired_run IS NULL AND last_seen_run != ?", (run_id, run_id))
+
+    def commit_identities(self, pending, run_id):
+        """Write the building and site registries a run computed ({'buildings': df, 'sites': {...}, 'building_sites': {...}},
+        see steps.assign_ids) in one transaction. Called only once the run has succeeded, so a failed run never
+        mints IDs or retires buildings."""
+        with self.conn() as c:
+            if "buildings" in pending:
+                self._save_building_registry(c, pending["buildings"], run_id)
+            if "sites" in pending:
+                self._save_site_registry(c, pending["sites"], run_id)
+            if "building_sites" in pending:
+                self._set_building_sites(c, pending["building_sites"])
 
     # ------------------------------------------------------------ runs and releases
     def insert_run(self, row):

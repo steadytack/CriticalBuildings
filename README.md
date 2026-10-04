@@ -130,6 +130,9 @@ UPRN counts and the DESNZ/BUUK columns are reserved but not populated. The full 
 ## Troubleshooting
 
 - **`check` says there is no bronze data:** run `fetch` first (the data folder is not in git).
+- **`check` says the OS data is "in the old shared folder":** OS Open Map Local is now stored per area
+  (`data/bronze/os_open_map_local__<area>`). Run `python -m critical_buildings migrate-bronze --area suffolk` once to move
+  the existing snapshots. The next run rebuilds silver once.
 - **A permission error on a file in OneDrive:** another program (Excel, QGIS) has it open. Close it, or keep the repository
   outside OneDrive; the data folder and `.venv` sync poorly.
 - **Lines like "Can't load requested DLL ... gdalplugins\gdal_*.dll" during a run:** a system-wide GDAL install on your

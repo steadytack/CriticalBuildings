@@ -56,9 +56,15 @@ def bronze_file(source, filename, area=None, pin=None):
     return bronze_snapshot(source, area, pin) / filename
 
 
-def os_layer_paths(layer, tiles=("tg", "tl", "tm"), pin=None):
+def scoped_area(source, area):
+    """`area` if the source keeps one snapshot series per area (`area_scoped: true` in settings.yml), else None."""
+    from critical_buildings import config  # config imports this module
+    return area if config.load_sources().get(source, {}).get("area_scoped") else None
+
+
+def os_layer_paths(layer, tiles=("tg", "tl", "tm"), pin=None, area=DEFAULT_AREA):
     """GDAL paths to an OS Open Map Local layer, read straight from the downloaded zips (no extraction)."""
-    snap = bronze_snapshot("os_open_map_local", pin=pin)
+    snap = bronze_snapshot("os_open_map_local", scoped_area("os_open_map_local", area), pin=pin)
     return [f"zip://{(snap / OS_TILE_ZIP.format(tile=t)).as_posix()}!"
             + OS_TILE_INNER.format(TILE=t.upper(), layer=layer) for t in tiles]
 
@@ -93,7 +99,7 @@ def inputs_key(area, inputs):
     inputs: [(source, filename or None)]; None means every file of that source's latest snapshot."""
     parts = []
     for source, filename in inputs:
-        snap = bronze_snapshot(source, area if source == "osm_overpass" else None)
+        snap = bronze_snapshot(source, scoped_area(source, area))
         files = json.loads((snap / "_manifest.json").read_text(encoding="utf-8"))["files"]
         parts += [f"{source}/{f['name']}:{f['sha256']}" for f in sorted(files, key=lambda f: f["name"]) if filename in (None, f["name"])]
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()[:12]

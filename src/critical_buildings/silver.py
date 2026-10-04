@@ -171,7 +171,7 @@ def load_os_sites(tags, boundary, area=paths.DEFAULT_AREA):
 
 
 def _read_layer(layer, boundary, area=paths.DEFAULT_AREA):
-    g = pd.concat([gpd.read_file(f) for f in paths.os_layer_paths(layer, tiles=sorted(config.load_area(area)["os_grid_squares"]))], ignore_index=True)
+    g = pd.concat([gpd.read_file(f) for f in paths.os_layer_paths(layer, tiles=sorted(config.load_area(area)["os_grid_squares"]), area=area)], ignore_index=True)
     g = gpd.GeoDataFrame(g, geometry=gpd.GeoSeries(g.geometry, crs=27700).force_2d(), crs=27700)
     return g[g.geometry.representative_point().within(boundary)]
 

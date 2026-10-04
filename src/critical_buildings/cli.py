@@ -12,6 +12,7 @@ import logging
 import sys
 
 from critical_buildings import paths
+from critical_buildings.locks import LockedError
 
 
 def _setup_logging(verbose=False):
@@ -39,6 +40,13 @@ def cmd_fetch(args):
     results = sources.fetch_all(rules, args.area, only, args.dry_run)
     for name, res in results.items():
         print(f"{name}: {res['status']}" + (f" ({res['snapshot']})" if "snapshot" in res else ""))
+    return 0
+
+
+def cmd_migrate_bronze(args):
+    from critical_buildings import sources
+    moved = sources.migrate_area_scoped_bronze(args.area)
+    print("\n".join(f"moved {m}" for m in moved) if moved else "Nothing to migrate.")
     return 0
 
 
@@ -176,6 +184,7 @@ def main(argv=None):
     f = add("fetch", cmd_fetch, "download source data into new bronze snapshots")
     f.add_argument("--only", help="comma-separated: osm,os,codepoint,dfe,cqc,nhs")
     f.add_argument("--dry-run", action="store_true", help="show what would be downloaded")
+    add("migrate-bronze", cmd_migrate_bronze, "move old shared bronze folders of area-scoped sources to this area")
     r = add("run", cmd_run, "build the dataset into a new gold run folder")
     r.add_argument("--type", choices=["dev", "candidate"], default="dev")
     r.add_argument("--notes")
@@ -202,7 +211,11 @@ def main(argv=None):
 
     args = p.parse_args(argv)
     _setup_logging(args.verbose)
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except LockedError as e:
+        print(e)
+        return 1
 
 
 if __name__ == "__main__":

@@ -12,11 +12,13 @@ import re
 import shutil
 import time
 import uuid
+import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 
 import requests
 
-from critical_buildings import config, paths
+from critical_buildings import config, locks, paths
 from critical_buildings.control.rules import AREA_TAGS
 
 log = logging.getLogger(__name__)
@@ -75,15 +77,46 @@ def list_snapshots(source, area=None):
     return sorted(p.name for p in d.glob("*") if p.is_dir()) if d.exists() else []
 
 
-def all_manifests():
-    """Manifest of the LATEST snapshot of every source present (used for lineage)."""
+def all_manifests(area=None):
+    """Manifest of the LATEST snapshot of every source present (used for lineage).
+
+    With `area`, area-scoped sources of other areas are left out. The manifest's area is taken from the folder name
+    (source__area), so snapshots moved there by migrate_area_scoped_bronze are described correctly."""
     out = []
     for d in sorted(p for p in paths.BRONZE.glob("*") if p.is_dir()):
+        dir_area = d.name.split("__", 1)[1] if "__" in d.name else None
+        if area is not None and dir_area not in (None, area):
+            continue
         latest = d / "LATEST.json"
         if latest.exists():
             snap = json.loads(latest.read_text(encoding="utf-8"))["snapshot"]
-            out.append(read_manifest(d / snap))
+            out.append({**read_manifest(d / snap), "area": dir_area})
     return out
+
+
+def legacy_unscoped_sources(area):
+    """Area-scoped sources whose snapshots still sit in the old shared folder (data/bronze/<source>) with none yet
+    for `area`: these need migrate_area_scoped_bronze."""
+    return [s for s, cat in load_sources().items()
+            if cat.get("area_scoped") and (paths.BRONZE / s / "LATEST.json").exists()
+            and not (paths.bronze_source_dir(s, area) / "LATEST.json").exists()]
+
+
+def migrate_area_scoped_bronze(area):
+    """One-off: move the old shared bronze folder of each area-scoped source to <source>__<area>.
+
+    Before OS Open Map Local was area-scoped its snapshots lived in data/bronze/os_open_map_local, whatever the area.
+    Only run this for the area those snapshots were fetched for. Snapshot contents are untouched. Returns the moved
+    folder names. (The bronze key changes with the folder name, so the next run rebuilds silver once.)"""
+    moved = []
+    with locks.pipeline_lock("migrate-bronze"):
+        for s in legacy_unscoped_sources(area):
+            src, dest = paths.BRONZE / s, paths.bronze_source_dir(s, area)
+            if dest.exists():
+                raise RuntimeError(f"{dest} already exists without a LATEST pointer; resolve it by hand.")
+            src.rename(dest)
+            moved.append(f"{s} -> {dest.name}")
+    return moved
 
 
 # ====================================================================================================
@@ -93,8 +126,47 @@ def all_manifests():
 HEADERS = {"User-Agent": "critical-buildings-pipeline/0.1"}
 
 
-def http_download(url, dest, retries=3, post_data=None, timeout=400):
-    """Stream a URL (or POST an Overpass query) to dest, retrying on server errors."""
+class BadDownload(ValueError):
+    """A download that arrived (HTTP 200) but is not the data we asked for."""
+
+
+def validate_overpass(path, min_elements=1):
+    """Overpass answers HTTP 200 even when the query timed out or ran out of memory: the JSON then carries a
+    'remark' and partial or no elements. Refuse those rather than store them as the latest snapshot."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (ValueError, UnicodeDecodeError) as e:
+        raise BadDownload(f"not valid JSON ({e})") from e
+    if not isinstance(doc, dict) or not isinstance(doc.get("elements"), list):
+        raise BadDownload("no 'elements' list in the Overpass response")
+    remark = str(doc.get("remark", ""))
+    if "error" in remark.lower() or "timed out" in remark.lower() or "out of memory" in remark.lower():
+        raise BadDownload(f"Overpass reported a problem: {remark}")
+    if len(doc["elements"]) < min_elements:
+        raise BadDownload(f"only {len(doc['elements'])} elements (expected at least {min_elements})")
+
+
+def validate_download(path, min_elements=1):
+    """Cheap sanity checks by file type: not empty, not an HTML error page, zips/ods really are zips, Overpass JSON complete."""
+    path = Path(path)
+    if path.stat().st_size == 0:
+        raise BadDownload("empty file")
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        validate_overpass(path, min_elements)
+    elif suffix in (".zip", ".ods"):
+        if not zipfile.is_zipfile(path):
+            raise BadDownload("not a valid zip/ods file")
+    else:
+        with open(path, "rb") as f:
+            head = f.read(512).lstrip().lower()
+        if head.startswith((b"<!doctype html", b"<html")):
+            raise BadDownload("got an HTML page instead of data")
+
+
+def http_download(url, dest, retries=3, post_data=None, timeout=400, validate=None):
+    """Stream a URL (or POST an Overpass query) to dest, retrying on server errors and on downloads that fail
+    `validate(dest)` (which raises BadDownload). Client errors such as 404 fail at once: retrying cannot help."""
     for attempt in range(retries + 1):
         try:
             if post_data is None:
@@ -105,12 +177,25 @@ def http_download(url, dest, retries=3, post_data=None, timeout=400):
                 with open(dest, "wb") as f:
                     for chunk in r.iter_content(1 << 20):
                         f.write(chunk)
-                return
-            log.warning("%s -> HTTP %s (attempt %s)", url, r.status_code, attempt + 1)
+                if validate is None:
+                    return
+                try:
+                    validate(dest)
+                    return
+                except BadDownload as e:
+                    log.warning("%s -> bad download: %s (attempt %s)", url, e, attempt + 1)
+                    last_problem = str(e)
+            else:
+                log.warning("%s -> HTTP %s (attempt %s)", url, r.status_code, attempt + 1)
+                last_problem = f"HTTP {r.status_code}"
+                if 400 <= r.status_code < 500 and r.status_code not in (408, 429):
+                    break
         except requests.RequestException as e:
             log.warning("%s -> %s (attempt %s)", url, e, attempt + 1)
-        time.sleep(15 * (attempt + 1))
-    raise RuntimeError(f"Could not download {url}")
+            last_problem = str(e)
+        if attempt < retries:
+            time.sleep(15 * (attempt + 1))
+    raise RuntimeError(f"Could not download {url}: {last_problem}")
 
 
 def _unique_snapshot_dir(source_dir, today):
@@ -134,7 +219,8 @@ def snapshot(source, specs, area=None, dry_run=False, note=""):
     try:
         for s in specs:
             log.info("downloading %s", s["name"])
-            http_download(s["url"], tmp / s["name"], post_data=s.get("post_data"))
+            http_download(s["url"], tmp / s["name"], post_data=s.get("post_data"),
+                          validate=lambda p, s=s: validate_download(p, s.get("min_elements", 1)))
         new_hashes = {s["name"]: sha256_file(tmp / s["name"]) for s in specs}
         latest = paths.latest_snapshot(source, area)
         if latest:
@@ -200,7 +286,7 @@ def fetch_open_map_local(area="suffolk", dry_run=False):
     cat = load_sources()["os_open_map_local"]
     tiles = config.load_area(area)["os_grid_squares"]
     specs = [{"name": f"opmplc_essh_{t}.zip", "url": cat["url"].format(tile=t.upper())} for t in tiles]
-    return snapshot("os_open_map_local", specs, dry_run=dry_run,
+    return snapshot("os_open_map_local", specs, area=area, dry_run=dry_run,
                              note=f"Grid squares: {', '.join(t.upper() for t in tiles)}")
 
 
@@ -275,7 +361,8 @@ def fetch_all(rules, area="suffolk", only=None, dry_run=False):
         "nhs": lambda: fetch_nhs(dry_run),
     }
     out = {}
-    for name in (only or ALL):
-        log.info("== fetching %s", name)
-        out[name] = jobs[name]()
+    with nullcontext() if dry_run else locks.pipeline_lock("fetch"):
+        for name in (only or ALL):
+            log.info("== fetching %s", name)
+            out[name] = jobs[name]()
     return out

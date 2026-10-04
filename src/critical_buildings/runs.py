@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from critical_buildings import config, lineage, paths
+from critical_buildings import config, lineage, locks, paths
 from critical_buildings.control.store import ControlError, current_user, now
 from critical_buildings.publish import DELIVERABLES, find_output
 
@@ -69,7 +69,7 @@ def start(store, area, run_type, rules, notes="", previous_run_id=None, user=Non
     dest = run_dir(area, run_id)
     dest.mkdir(parents=True)
     ctx = RunContext(run_id, area, run_type, now(), dest, previous_run_id)
-    inputs = lineage.bronze_inputs()
+    inputs = lineage.bronze_inputs(area)
     store.insert_run(dict(
         run_id=run_id, area=area, run_type=run_type, status="running", started_at=ctx.started_at,
         started_by=user or current_user(), rule_version_id=rules.version_id, rule_version_label=rules.label,
@@ -85,6 +85,7 @@ def finish(store, ctx, rules, silver_key, silver_reused, gold):
                                 config.settings_hash(), area_hash)
     lin["finished_at"] = now()
     lineage.write_lineage(ctx.dir, lin)
+    store.commit_identities(gold.identities, ctx.run_id)      # IDs are only minted by a run that succeeded
     store.add_run_changes(ctx.run_id, gold.changes)
     store.update_run(ctx.run_id, status="succeeded", finished_at=lin["finished_at"], silver_key=silver_key,
                      buildings=lin["gold"]["buildings"], sites=lin["gold"]["sites"],
@@ -109,6 +110,11 @@ def next_release_name(store, today=None):
 
 def release(store, area, name=None, run_id=None, notes="", user=None):
     """Copy one run's deliverables to data/published/<area>/<name>/ (immutable) and record the release."""
+    with locks.pipeline_lock("release"):
+        return _release(store, area, name, run_id, notes, user)
+
+
+def _release(store, area, name, run_id, notes, user):
     run_id = run_id or current_run_id(area)
     if not run_id:
         raise ControlError("No successful run to release. Run: python -m critical_buildings run")

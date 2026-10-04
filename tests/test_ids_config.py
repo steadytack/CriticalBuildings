@@ -58,6 +58,44 @@ def test_a_retired_building_that_returns_gets_its_old_id_back(store):
     assert back["Building ID"].tolist() == ["BLDG-000001", "BLDG-000002"] and new == 0
 
 
+def test_footprint_fallback_needs_at_least_half_the_smaller_footprint_to_overlap(store):
+    steps.assign_ids(recs_of(("OSM", "way/1", square(0, 0))), "d", store, "run1")
+    mostly = ("OSM", "way/2", square(8, 0))                       # 60% of the old footprint overlaps; the registry now holds 8..28
+    little = ("OSM", "way/4", square(23, 0))                      # only 25% of it overlaps
+    far = ("OSM", "way/3", square(5000, 0))
+    got, new = steps.assign_ids(recs_of(mostly), "d", store, "run2")
+    assert got["Building ID"].tolist() == ["BLDG-000001"] and new == 0
+    got, new = steps.assign_ids(recs_of(little), "d", store, "run3")
+    assert got["Building ID"].tolist() == ["BLDG-000002"] and new == 1
+    got, _ = steps.assign_ids(recs_of(far), "d", store, "run4")
+    assert got["Building ID"].tolist() == ["BLDG-000003"]
+
+
+def test_two_redrawn_features_over_one_old_building_do_not_share_its_id(store):
+    steps.assign_ids(recs_of(("OSM", "way/1", square(0, 0))), "d", store, "run1")
+    first = ("OSM", "way/8", square(1, 0))
+    second = ("OSM", "way/9", square(2, 0))
+    got, new = steps.assign_ids(recs_of(first, second), "d", store, "run2")
+    assert got["Building ID"].tolist() == ["BLDG-000001", "BLDG-000002"] and new == 1       # first in order wins
+
+
+def test_a_footprint_match_never_steals_an_id_already_matched_by_key(store):
+    steps.assign_ids(recs_of(("OSM", "way/1", square(0, 0)), ("OSM", "way/2", square(100, 0))), "d", store, "run1")
+    keeps_key = ("OSM", "way/1", square(100, 0))                  # key says building 1, but sits where building 2 was
+    redrawn = ("OSM", "way/55", square(101, 0))                   # footprint says building 2
+    got, new = steps.assign_ids(recs_of(keeps_key, redrawn), "d", store, "run2")
+    assert got["Building ID"].tolist() == ["BLDG-000001", "BLDG-000002"] and new == 0
+
+
+def test_footprint_fallback_scales_to_a_large_registry(store):
+    n = 3000
+    old = recs_of(*[("OSM", f"way/{i}", square((i % 60) * 50, (i // 60) * 50)) for i in range(n)])
+    first, _ = steps.assign_ids(old, "d", store, "run1")
+    redrawn = recs_of(*[("OSM", f"way/new{i}", square((i % 60) * 50 + 1, (i // 60) * 50 + 1)) for i in range(n)])
+    second, new = steps.assign_ids(redrawn, "d", store, "run2")           # every OSM id changed: all matched by footprint
+    assert second["Building ID"].tolist() == first["Building ID"].tolist() and new == 0
+
+
 # ------------------------------------------------------------------ site IDs
 def sites_of(*counts):
     return pd.DataFrame({"site_group": range(1, len(counts) + 1), "n_buildings": counts})
@@ -90,6 +128,31 @@ def test_a_new_site_gets_a_new_id_and_vanished_sites_are_retired(store):
     r3 = with_ids(store, [A, C], [1, 2])
     out3, _ = steps.assign_site_ids(r3, sites_of(1, 1), "d", store, "run3")
     assert out3.loc[1, "Site ID"] == "SITE-000003"                    # never reuses SITE-000002
+
+
+# ------------------------------------------------------------------ registry writes are deferred until a run succeeds
+def test_pending_identities_do_not_touch_the_registry_until_committed(store):
+    steps.assign_ids(recs_of(A, B), "d", store, "run1")                    # an earlier, successful run
+    pending = {}
+    r2, new = steps.assign_ids(recs_of(A, C), "d", store, "run2", pending)  # B vanishes, C is new
+    r2["site_group"] = [1, 2]
+    steps.assign_site_ids(r2, sites_of(1, 1), "d", store, "run2", pending)
+    reg = store.table_df("building_registry")
+    assert list(reg.building_id) == ["BLDG-000001", "BLDG-000002"] and reg.retired_run.isna().all()
+    assert store.table_df("site_registry").empty and store.building_site_map() == {}
+
+    store.commit_identities(pending, "run2")                               # the run succeeded
+    reg = store.table_df("building_registry").set_index("building_id")
+    assert list(reg.index) == ["BLDG-000001", "BLDG-000002", "BLDG-000003"] and new == 1
+    assert reg.loc["BLDG-000002", "retired_run"] == "run2"
+    assert len(store.table_df("site_registry")) == 2 and len(store.building_site_map()) == 2
+
+
+def test_a_failed_run_does_not_burn_ids(store):
+    steps.assign_ids(recs_of(A), "d", store, "run1")
+    steps.assign_ids(recs_of(A, B), "d", store, "failed-run", {})          # never committed
+    again, new = steps.assign_ids(recs_of(A, B), "d", store, "run2")
+    assert again["Building ID"].tolist() == ["BLDG-000001", "BLDG-000002"] and new == 1
 
 
 # ------------------------------------------------------------------ configuration

@@ -15,7 +15,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from critical_buildings import config, lineage, paths, runs
+from critical_buildings import config, lineage, locks, paths, runs
 
 SNAPSHOT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(-\d+)?$")
 
@@ -45,6 +45,8 @@ def protected(store):
             continue
         for s in json.loads(run["bronze_snapshots_json"] or "[]"):
             bronze.add((f"{s['source']}__{s['area']}" if s.get("area") else s["source"], s["snapshot"]))
+            if not s.get("area"):       # runs made before a source was area-scoped; its folder may have been migrated
+                bronze.add((f"{s['source']}__{run['area']}", s["snapshot"]))
         if run["silver_key"]:
             silver.add(run["silver_key"])
         if run["bronze_key"]:
@@ -63,7 +65,8 @@ def plan(store, today=None):
         snaps = sorted(d.name for d in src_dir.iterdir() if d.is_dir() and SNAPSHOT_RE.match(d.name))
         latest = (json.loads((src_dir / "LATEST.json").read_text(encoding="utf-8"))["snapshot"]
                   if (src_dir / "LATEST.json").exists() else None)
-        keep = set(snaps[-cfg.bronze_keep:]) | ({latest} if latest else set())
+        newest = set(snaps[-cfg.bronze_keep:]) if cfg.bronze_keep else set()     # [-0:] would be every snapshot
+        keep = newest | ({latest} if latest else set())
         for s in snaps:
             if s in keep:
                 continue
@@ -121,7 +124,12 @@ def _zip_dir(src, dest_zip):
 
 
 def apply(store, actions, archive_dir=None):
-    """Carry out a plan. Archives are verified before the original is removed."""
+    """Carry out a plan. Archives are verified before the original is removed. Cannot overlap a run or fetch."""
+    with locks.pipeline_lock("archive"):
+        return _apply(store, actions, archive_dir)
+
+
+def _apply(store, actions, archive_dir):
     archive_dir = Path(archive_dir or paths.ARCHIVE)
     done = []
     for a in actions:
@@ -143,6 +151,11 @@ def apply(store, actions, archive_dir=None):
 
 def restore(store, layer, name, archive_dir=None, area=paths.DEFAULT_AREA):
     """Unzip an archived gold run (name = run id) or bronze snapshot (name = '<source dir>/<snapshot>')."""
+    with locks.pipeline_lock("restore"):
+        return _restore(store, layer, name, archive_dir, area)
+
+
+def _restore(store, layer, name, archive_dir, area):
     archive_dir = Path(archive_dir or paths.ARCHIVE)
     if layer == "gold":
         zp, dest = archive_dir / "gold" / area / f"{name}.zip", runs.run_dir(area, name)

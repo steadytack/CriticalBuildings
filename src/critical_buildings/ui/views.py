@@ -22,6 +22,7 @@ from critical_buildings import (
 )
 from critical_buildings import silver as silver_build
 from critical_buildings.control.store import ControlError, current_user
+from critical_buildings.locks import LockedError
 from critical_buildings.ui import flow, jobs, logic
 from critical_buildings.ui.common import bump, key
 from critical_buildings.ui.common import store as common_store
@@ -289,9 +290,13 @@ def tab_runs(s, area):
                                     "MB": round(a.bytes / 1e6, 1)} for a in plan]), hide_index=True, width="stretch")
         st.caption("Nothing a release depends on is ever touched. Archived runs and snapshots can be restored with the `restore` command.")
         if st.button("Apply this plan", key=key("apply_plan")):
-            retention.apply(s, plan)
-            bump()
-            st.rerun()
+            try:
+                retention.apply(s, plan)
+            except LockedError as e:
+                st.error(str(e))
+            else:
+                bump()
+                st.rerun()
 
 
 # ------------------------------------------------------------------------------------------------ Data tab

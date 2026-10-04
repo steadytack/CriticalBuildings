@@ -138,6 +138,20 @@ def test_old_bronze_snapshots_are_archived_but_latest_and_newest_are_kept(isolat
     assert got == [("bronze", "archive", "2026-01-01"), ("bronze", "archive", "2026-02-01")]
 
 
+def test_bronze_keep_zero_archives_everything_except_latest(isolated_paths, store):
+    make_snapshots("dfe_gias", ["2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01"], "2026-04-01")
+    got = [a.meta["snapshot"] for a in planned(store, bronze_keep=0)]
+    assert got == ["2026-01-01", "2026-02-01", "2026-03-01"]                # LATEST is still never touched
+
+
+def test_bronze_keep_zero_still_spares_what_a_release_depends_on(isolated_paths, store):
+    make_snapshots("dfe_gias", ["2026-01-01", "2026-02-01", "2026-04-01"], "2026-04-01")
+    make_run(store, "R1", days_ago=60, bronze=[{"source": "dfe_gias", "area": None, "snapshot": "2026-01-01"}])
+    runs.set_current("suffolk", "R1")
+    runs.release(store, "suffolk", "v1", "R1")
+    assert [a.meta["snapshot"] for a in planned(store, bronze_keep=0) if a.layer == "bronze"] == ["2026-02-01"]
+
+
 def test_whatever_a_release_depends_on_is_never_planned_for_removal(isolated_paths, store):
     make_snapshots("dfe_gias", ["2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01"], "2026-04-01")
     for k in ("k1", "k2", "k3", "k4"):
