@@ -34,19 +34,19 @@ def test_live_validation_of_an_unsaved_edit():
     base = snap()
     tags = [dict(t, active=1) for t in base["tags"]]
     tags[0]["tag"] = "amenity = fire_station"
-    errors, warnings = logic.validation_messages(logic.propose(base, tags=tags))
+    errors, _ = logic.validation_messages(logic.propose(base, tags=tags))
     assert any("should look like key=value" in e for e in errors)
 
 
 def test_half_edited_tag_rows_are_reported():
     rules = [dict(r, active=1) for r in snap()["rules"]]
-    tags = [dict(id=1, rule_ref=None, source="OSM", tag="a=b"), dict(id=2, rule_ref=999, source="OSM", tag="a=b"),
-            dict(id=3, rule_ref=1, source="", tag="a=b")]
+    tags = [{"id": 1, "rule_ref": None, "source": "OSM", "tag": "a=b"}, {"id": 2, "rule_ref": 999, "source": "OSM", "tag": "a=b"},
+            {"id": 3, "rule_ref": 1, "source": "", "tag": "a=b"}]
     problems = logic.row_problems(rules, tags)
     assert any("Tag row 1" in p and "choose which rule" in p for p in problems)
     assert any("Tag row 2" in p and "no rule 999" in p for p in problems)
     assert any("Tag row 3" in p and "Source is blank" in p for p in problems)
-    assert logic.row_problems(rules, [dict(id=1, rule_ref=1, source="OSM", tag="a=b")]) == []
+    assert logic.row_problems(rules, [{"id": 1, "rule_ref": 1, "source": "OSM", "tag": "a=b"}]) == []
 
 
 # ------------------------------------------------------------------ plain-English diffs
@@ -57,13 +57,13 @@ def test_identical_snapshots_have_no_diff():
 def test_diff_describes_rule_tag_mapping_and_role_changes():
     old, new = snap(), snap()
     new["rules"][0]["importance"] = "Medium"
-    new["rules"].append(dict(rule_ref=40, primary_category="Care", building_type="Dentist", importance="Low",
-                             importance_driver="d", priority=50, active=True, notes=""))
+    new["rules"].append({"rule_ref": 40, "primary_category": "Care", "building_type": "Dentist", "importance": "Low",
+                             "importance_driver": "d", "priority": 50, "active": True, "notes": ""})
     new["rules"] = [r for r in new["rules"] if r["rule_ref"] != 20]
     new["tags"][0]["tag"] = "amenity=fire_station;"
-    new["tags"].append(dict(id=7, rule_ref=40, source="OSM", tag="amenity=dentist", active=True, notes=""))
-    new["reference_mapping"].append(dict(sort_order=3, source="CQC", field="Care home?", match="Equals", value="Y",
-                                         building_type="Primary School", active=True, notes=""))
+    new["tags"].append({"id": 7, "rule_ref": 40, "source": "OSM", "tag": "amenity=dentist", "active": True, "notes": ""})
+    new["reference_mapping"].append({"sort_order": 3, "source": "CQC", "field": "Care home?", "match": "Equals", "value": "Y",
+                                         "building_type": "Primary School", "active": True, "notes": ""})
     new["role"]["min_area"] = 200.0
     new["role"]["ancillary"] = ["garage"]
     new["role"]["per_type"] = {"Fire Station": 60.0}

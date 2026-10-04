@@ -85,7 +85,7 @@ CLASSIFIED_COLS = ["source", "source_id", "name", "rule_ref", "category", "build
 
 def _best(matches):
     """Pick the winning rule: lowest Priority number, then higher importance, then lowest ref."""
-    return sorted(matches, key=lambda t: (t.priority, IMP_RANK[t.importance], t.rule_ref))[0]
+    return min(matches, key=lambda t: (t.priority, IMP_RANK[t.importance], t.rule_ref))
 
 
 def _osm_match(tags, rule):
@@ -98,9 +98,9 @@ def _osm_match(tags, rule):
 
 
 def _row(source, sid, name, rule, refs, geom, note="", osm_building=""):
-    return dict(source=source, source_id=sid, name=name, rule_ref=rule.rule_ref, category=rule.category,
-                building_type=rule.building_type, importance=rule.importance, driver=rule.driver,
-                matched_refs=";".join(str(r) for r in sorted(refs)), note=note, rule_notes=rule.notes, osm_building=osm_building, geometry=geom)
+    return {"source": source, "source_id": sid, "name": name, "rule_ref": rule.rule_ref, "category": rule.category,
+                "building_type": rule.building_type, "importance": rule.importance, "driver": rule.driver,
+                "matched_refs": ";".join(str(r) for r in sorted(refs)), "note": note, "rule_notes": rule.notes, "osm_building": osm_building, "geometry": geom}
 
 
 def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
@@ -118,8 +118,8 @@ def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
             rows.append(_row("OSM", f.osm_id, f.tags.get("name", ""), win, refs, f.geometry,
                              osm_building=f.tags.get("building", "")))
             if f.geometry.geom_type in ("Polygon", "MultiPolygon"):
-                sites.append(dict(name=f.tags.get("name", ""), category=win.category, origin="OSM site",
-                                  key=f.osm_id, geometry=f.geometry))
+                sites.append({"name": f.tags.get("name", ""), "category": win.category, "origin": "OSM site",
+                                  "key": f.osm_id, "geometry": f.geometry})
         else:
             areas.append((f, _best(hits), refs))
 
@@ -131,8 +131,8 @@ def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
     inherited = {}
     for f, win, refs in areas:
         if f.geometry.geom_type in ("Polygon", "MultiPolygon"):
-            sites.append(dict(name=f.tags.get("name", ""), category=win.category, origin="OSM area",
-                              key=f.osm_id, geometry=f.geometry))
+            sites.append({"name": f.tags.get("name", ""), "category": win.category, "origin": "OSM area",
+                              "key": f.osm_id, "geometry": f.geometry})
         inside = blds.index[pts.within(f.geometry)]
         for i in inside:
             cur = inherited.get(i)
@@ -164,8 +164,8 @@ def load_os_sites(tags, boundary, area=paths.DEFAULT_AREA):
         rule = next((os_rules[(r.SITETHEME, c.strip())] for c in str(r.CLASSIFICA).split(",")
                      if (r.SITETHEME, c.strip()) in os_rules), None)
         if rule:
-            rows.append(dict(name=r.DISTNAME or "", category=rule.category, origin="OS Functional Site",
-                             key=r.ID, geometry=r.geometry))
+            rows.append({"name": r.DISTNAME or "", "category": rule.category, "origin": "OS Functional Site",
+                             "key": r.ID, "geometry": r.geometry})
     return gpd.GeoDataFrame(rows, columns=["name", "category", "origin", "key", "geometry"],
                             geometry="geometry", crs=27700)
 
@@ -244,12 +244,12 @@ def _ods():
     out = {}
     ets = pd.read_csv(paths.bronze_file("nhs_ods", "ets.csv"), header=None, dtype=str).fillna("")
     for r in ets.itertuples(index=False):
-        out[r[0]] = dict(name=r[1], postcode=r[9], status="Closed" if r[11] else "Active",
-                         parent=trust.get(r[14], r[14]), kind="ets")
+        out[r[0]] = {"name": r[1], "postcode": r[9], "status": "Closed" if r[11] else "Active",
+                         "parent": trust.get(r[14], r[14]), "kind": "ets"}
     gp = pd.read_csv(paths.bronze_file("nhs_ods", "epraccur.csv"), header=None, dtype=str).fillna("")
     for r in gp.itertuples(index=False):
-        out.setdefault(r[0], dict(name=r[1], postcode=r[9], status="Active" if r[12] == "ACTIVE" else "Closed",
-                                  parent=r[14], kind="epraccur"))
+        out.setdefault(r[0], {"name": r[1], "postcode": r[9], "status": "Active" if r[12] == "ACTIVE" else "Closed",
+                                  "parent": r[14], "kind": "epraccur"})
     return out
 
 
@@ -285,13 +285,13 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
             t = "IGNORE" if t else "UNMAPPED"
         pupils = r.get("NumberOfPupils")
         trust = r.get("Trusts (name)")
-        rows.append(dict(ref_source="DfE GIAS", ref_id=str(r.URN), ref_name=r.EstablishmentName, building_type=t,
-                         status=r["EstablishmentStatus (name)"], capacity=pupils if pd.notna(pupils) else None,
-                         capacity_unit="pupils",
-                         detail=f"{r['TypeOfEstablishment (name)']} / {r['PhaseOfEducation (name)']}",
-                         rating="", provider=trust if pd.notna(trust) else "",
-                         postcode=r.get("Postcode", ""), uprn="", ods_code="", ods_status="", ods_parent="",
-                         geometry=gpd.points_from_xy([r.Easting], [r.Northing])[0]))
+        rows.append({"ref_source": "DfE GIAS", "ref_id": str(r.URN), "ref_name": r.EstablishmentName, "building_type": t,
+                         "status": r["EstablishmentStatus (name)"], "capacity": pupils if pd.notna(pupils) else None,
+                         "capacity_unit": "pupils",
+                         "detail": f"{r['TypeOfEstablishment (name)']} / {r['PhaseOfEducation (name)']}",
+                         "rating": "", "provider": trust if pd.notna(trust) else "",
+                         "postcode": r.get("Postcode", ""), "uprn": "", "ods_code": "", "ods_status": "", "ods_parent": "",
+                         "geometry": gpd.points_from_xy([r.Easting], [r.Northing])[0]})
 
     # ---- CQC (HSCA active locations) ----
     c = _cqc_locations(area)
@@ -314,14 +314,14 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
         o = ods.get(code, {})
         beds = r["Care homes beds"]
         rating = r["Location Latest Overall Rating"]
-        rows.append(dict(ref_source="CQC", ref_id=r["Location ID"], ref_name=r["Location Name"], building_type=t,
-                         status="Active", capacity=beds if pd.notna(beds) and beds > 0 else None,
-                         capacity_unit="beds", detail=r["Location Primary Inspection Category"],
-                         rating=rating if pd.notna(rating) else "", provider=r["Provider Name"],
-                         postcode=r["Location Postal Code"],
-                         uprn=str(int(r["Location UPRN ID"])) if pd.notna(r["Location UPRN ID"]) else "",
-                         ods_code=code, ods_status=o.get("status", ""), ods_parent=o.get("parent", ""),
-                         geometry=cg[i]))
+        rows.append({"ref_source": "CQC", "ref_id": r["Location ID"], "ref_name": r["Location Name"], "building_type": t,
+                         "status": "Active", "capacity": beds if pd.notna(beds) and beds > 0 else None,
+                         "capacity_unit": "beds", "detail": r["Location Primary Inspection Category"],
+                         "rating": rating if pd.notna(rating) else "", "provider": r["Provider Name"],
+                         "postcode": r["Location Postal Code"],
+                         "uprn": str(int(r["Location UPRN ID"])) if pd.notna(r["Location UPRN ID"]) else "",
+                         "ods_code": code, "ods_status": o.get("status", ""), "ods_parent": o.get("parent", ""),
+                         "geometry": cg[i]})
 
     # ---- NHS ODS trust sites not already known to CQC (located by postcode) ----
     pc = postcode_points()
@@ -337,10 +337,10 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
         pt = gpd.points_from_xy([xy[0]], [xy[1]])[0]
         if not boundary.contains(pt):
             continue
-        rows.append(dict(ref_source="NHS ODS", ref_id=code, ref_name=o["name"].title(), building_type=t,
-                         status="Active", capacity=None, capacity_unit="", detail="NHS trust site",
-                         rating="", provider=o["parent"], postcode=o["postcode"], uprn="", ods_code=code,
-                         ods_status="Active", ods_parent=o["parent"], geometry=pt))
+        rows.append({"ref_source": "NHS ODS", "ref_id": code, "ref_name": o["name"].title(), "building_type": t,
+                         "status": "Active", "capacity": None, "capacity_unit": "", "detail": "NHS trust site",
+                         "rating": "", "provider": o["parent"], "postcode": o["postcode"], "uprn": "", "ods_code": code,
+                         "ods_status": "Active", "ods_parent": o["parent"], "geometry": pt})
     out = gpd.GeoDataFrame(rows, columns=REFERENCE_COLS, geometry="geometry", crs=27700)
     # ODS lists some sites under several codes: keep one record per (name, postcode)
     key = out.ref_name.str.lower().str.replace(r"[^a-z0-9]", "", regex=True) + out.postcode.map(_norm_pc)

@@ -4,11 +4,11 @@ from helpers import feature, gdf, point, square
 
 from critical_buildings.gold import merge
 
-FIRE = dict(category="Emergency", building_type="Fire Station")
-POLICE = dict(category="Emergency", building_type="Police Station")
-PRIMARY = dict(category="Education", building_type="Primary School")
-SECONDARY = dict(category="Education", building_type="Secondary School")
-STATION = dict(category="Transport", building_type="Railway Station")
+FIRE = {"category": "Emergency", "building_type": "Fire Station"}
+POLICE = {"category": "Emergency", "building_type": "Police Station"}
+PRIMARY = {"category": "Education", "building_type": "Primary School"}
+SECONDARY = {"category": "Education", "building_type": "Secondary School"}
+STATION = {"category": "Transport", "building_type": "Railway Station"}
 PRIO = {1: 50, 2: 50, 17: 50, 18: 50, 20: 90, 23: 50}
 
 
@@ -77,7 +77,7 @@ def test_education_types_may_differ_between_sources_and_are_flagged():
 
 
 def test_the_lower_priority_number_wins_between_two_rules():
-    out = run([os_row("os1", "", 20, dict(category="Education", building_type="School"), square(0, 0, 40))],
+    out = run([os_row("os1", "", 20, {"category": "Education", "building_type": "School"}, square(0, 0, 40))],
               [osm_row("way/1", "", 17, PRIMARY, square(5, 5, 40))])
     assert out.iloc[0].building_type == "Primary School"             # rule 17 (priority 50) beats generic rule 20 (90)
 

@@ -16,7 +16,7 @@ import json
 import logging
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from critical_buildings import paths
 
@@ -53,7 +53,7 @@ class _Run:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def emit(self, kind, **fields):
-        event = {"t": datetime.now(timezone.utc).isoformat(timespec="milliseconds"), "elapsed_s": round(time.time() - self.t0, 1),
+        event = {"t": datetime.now(UTC).isoformat(timespec="milliseconds"), "elapsed_s": round(time.time() - self.t0, 1),
                  "kind": kind, "stage": self.stage_id, **fields}
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(event, default=str) + "\n")
@@ -84,7 +84,7 @@ def stage(stage_id):
     r.stage_id = stage_id
     r.stage_t0[stage_id] = time.time()
     r.notes[stage_id] = {}
-    started = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    started = datetime.now(UTC).isoformat(timespec="seconds")
     r.store.save_stage(r.run_id, stage_id, status="running", started_at=started, finished_at=None, detail_json="{}")
     r.emit("stage_start")
     try:
@@ -100,7 +100,7 @@ def _finish(r, stage_id, started, status, error=None):
     if error:
         detail["error"] = error
     r.store.save_stage(r.run_id, stage_id, status=status, started_at=started,
-                       finished_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), detail_json=json.dumps(detail, default=str))
+                       finished_at=datetime.now(UTC).isoformat(timespec="seconds"), detail_json=json.dumps(detail, default=str))
     r.emit("stage_end", status=status)
     r.stage_id = None
 

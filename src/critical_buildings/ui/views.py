@@ -149,8 +149,7 @@ def preflight(s, area):
     problems = pipeline.check(area, store=s)
     facts = []
     try:
-        vid, snap = s.get_version()
-        rules = s.ruleset()
+        rules = s.ruleset()          # raises ControlError when nothing is published yet
         facts.append(f"Rule set **{rules.label}** will be used" + (" (the draft has unpublished edits that will not be)." if s.has_unpublished_changes() else "."))
         ok = s.runs_df(area)
         ok = ok[ok["status"] == "succeeded"]
@@ -221,7 +220,7 @@ def live_panel(area):
         summary = jobs.summarise_events(jobs.events_for(run_id), [c["id"] for c in cfgs if c.get("function")])
         st.dataframe(stage_table(summary, cfgs), hide_index=True, width="stretch")
         if job["state"] == "running" and summary["current_step"]:
-            since = (datetime.now() - datetime.fromisoformat(job["started"])).total_seconds()
+            since = (datetime.now() - datetime.fromisoformat(job["started"])).total_seconds()  # noqa: DTZ005 - local time is intended
             st.info(f"Now: {summary['current_step']}   (build running for {flow.fmt_seconds(since)})")
             if summary["bar"]:
                 done, total = summary["bar"]
@@ -329,7 +328,7 @@ def tab_data(s, area):
         rows = []
         for kind in ("conformed", "classified"):
             for d in sorted((paths.SILVER / area / kind).glob("*")):
-                rows.append({"Kind": kind, "Key": d.name, "Size": human(folder_size(d)), "Modified": datetime.fromtimestamp(d.stat().st_mtime).strftime("%Y-%m-%d %H:%M")})
+                rows.append({"Kind": kind, "Key": d.name, "Size": human(folder_size(d)), "Modified": datetime.fromtimestamp(d.stat().st_mtime).strftime("%Y-%m-%d %H:%M")})  # noqa: DTZ006 - local time is intended
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
         st.caption("Cleaned data is rebuilt from the sources and rules on demand, so old builds can be deleted safely.")
         return

@@ -27,7 +27,7 @@ def source_status(retrieved_at, refresh, today=None):
     """(age in days or None, 'stale' when older than its refresh cadence, else 'succeeded'; None if never fetched)."""
     if not retrieved_at:
         return None, None
-    today = today or date.today()
+    today = today or date.today()  # noqa: DTZ011 - local time is intended
     age = (today - datetime.fromisoformat(str(retrieved_at)).date()).days
     limit = cadence_days(refresh)
     return age, ("stale" if limit is not None and age > limit else "succeeded")

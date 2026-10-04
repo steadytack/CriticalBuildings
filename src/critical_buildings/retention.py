@@ -56,7 +56,7 @@ def protected(store):
 
 def plan(store, today=None):
     cfg = config.get().retention
-    today = today or dt.datetime.now(dt.timezone.utc)
+    today = today or dt.datetime.now(dt.UTC)
     prot = protected(store)
     actions = []
 
@@ -137,7 +137,7 @@ def _apply(store, actions, archive_dir):
             rel = a.path.relative_to(paths.DATA)
             dest = archive_dir / rel.parent / f"{a.path.name}.zip"
             info = _zip_dir(a.path, dest)
-            (dest.with_suffix(".json")).write_text(json.dumps({**info, "original": rel.as_posix(), "archived_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "reason": a.reason, **a.meta}, indent=2), encoding="utf-8")
+            (dest.with_suffix(".json")).write_text(json.dumps({**info, "original": rel.as_posix(), "archived_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "reason": a.reason, **a.meta}, indent=2), encoding="utf-8")
             shutil.rmtree(a.path)
             if a.layer == "gold":
                 store.update_run(a.meta["run_id"], status="archived", archive_path=str(dest))

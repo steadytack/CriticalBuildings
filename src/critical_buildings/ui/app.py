@@ -33,7 +33,7 @@ def sidebar(s):
     else:
         st.sidebar.success("Draft = published version.")
     errors, _ = logic.validation_messages(s.draft_snapshot())
-    st.sidebar.write(f"Draft check: {'**%d problem(s)**' % len(errors) if errors else 'no problems'}")
+    st.sidebar.write(f"Draft check: {f'**{len(errors)} problem(s)**' if errors else 'no problems'}")
 
     with st.sidebar.expander("Publish the draft", expanded=False):
         reason = st.text_input("Reason for this version", key=key("publish_reason"))

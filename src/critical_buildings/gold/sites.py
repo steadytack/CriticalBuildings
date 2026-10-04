@@ -44,8 +44,8 @@ def _merge_candidates(cs):
         os_rows = grp[grp.origin == "OS Functional Site"]
         base = os_rows.iloc[0] if len(os_rows) else grp.loc[grp.geometry.area.idxmax()]
         name = next((n for n in [base["name"]] + list(os_rows["name"]) + list(grp["name"]) if n), "")
-        out.append(dict(name=name, category=base.category, origin=" + ".join(sorted(set(grp.origin))),
-                        geometry=base.geometry))
+        out.append({"name": name, "category": base.category, "origin": " + ".join(sorted(set(grp.origin))),
+                        "geometry": base.geometry})
     return gpd.GeoDataFrame(out, geometry="geometry", crs=27700)
 
 
@@ -70,7 +70,7 @@ def assign_sites(recs, site_candidates):
             gid += 1
             site_gid[m_idx] = gid
             row = merged.loc[m_idx]
-            sites[gid] = dict(name=row["name"], method=row.origin, geometry=row.geometry)
+            sites[gid] = {"name": row["name"], "method": row.origin, "geometry": row.geometry}
             recs.loc[grp.index, "site_group"] = gid
             recs.loc[grp.index, "site_method"] = row.origin
 
@@ -107,8 +107,8 @@ def assign_sites(recs, site_candidates):
                 m = recs.loc[members.index]
                 method = "Single building" if len(m) == 1 else "Proximity cluster"
                 names = [n for n in m["name"] if n]
-                sites[gid] = dict(name=pd.Series(names).mode().iloc[0] if names else "", method=method,
-                                  geometry=unary_union(list(m.geometry)).convex_hull.buffer(_c().cluster_gap_m / 2))
+                sites[gid] = {"name": pd.Series(names).mode().iloc[0] if names else "", "method": method,
+                                  "geometry": unary_union(list(m.geometry)).convex_hull.buffer(_c().cluster_gap_m / 2)}
                 recs.loc[members.index, "site_group"] = gid
                 recs.loc[members.index, "site_method"] = method
 
@@ -118,10 +118,10 @@ def assign_sites(recs, site_candidates):
     recs.loc[single & ~recs.site_method.isin(["Single building"]), "site_method"] = "Single building"
     rows = []
     for g, m in recs.groupby("site_group"):
-        rows.append(dict(site_group=g, name=sites[g]["name"] or next((n for n in m["name"] if n), ""),
-                         building_type=m.building_type.mode().iloc[0], category=m.category.mode().iloc[0],
-                         importance=min(m.importance, key=IMP_RANK.get), n_buildings=len(m),
-                         method=sites[g]["method"] if len(m) > 1 else "Single building",
-                         geometry=sites[g]["geometry"]))
+        rows.append({"site_group": g, "name": sites[g]["name"] or next((n for n in m["name"] if n), ""),
+                         "building_type": m.building_type.mode().iloc[0], "category": m.category.mode().iloc[0],
+                         "importance": min(m.importance, key=IMP_RANK.get), "n_buildings": len(m),
+                         "method": sites[g]["method"] if len(m) > 1 else "Single building",
+                         "geometry": sites[g]["geometry"]})
     sdf = gpd.GeoDataFrame(rows, geometry="geometry", crs=27700)
     return recs, sdf

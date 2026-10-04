@@ -68,7 +68,7 @@ def pipeline_lock(action):
     """Hold the pipeline lock for the `with` block; raises LockedError if another live process holds it."""
     p = lock_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    me = {"pid": os.getpid(), "action": action, "started": datetime.now().isoformat(timespec="seconds")}
+    me = {"pid": os.getpid(), "action": action, "started": datetime.now().isoformat(timespec="seconds")}  # noqa: DTZ005 - local time is intended
     for attempt in (1, 2):
         try:
             fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)

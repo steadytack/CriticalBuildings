@@ -38,10 +38,10 @@ def test_diff_without_excluded_column_still_works():
 
 def test_partial_override_save_keeps_other_columns(tmp_path):
     store = ControlStore(tmp_path / "control.db")
-    store.save_overrides([dict(building_id="BLDG-000001", building_role_override="Ancillary",
-                               verification_override="Verified (manual)", manual_override_notes="site visit")],
+    store.save_overrides([{"building_id": "BLDG-000001", "building_role_override": "Ancillary",
+                               "verification_override": "Verified (manual)", "manual_override_notes": "site visit"}],
                          "ann", "first")
-    store.save_overrides([dict(building_id="BLDG-000001", review_decision="Accepted", exclude="Y")], "bob", "review")
+    store.save_overrides([{"building_id": "BLDG-000001", "review_decision": "Accepted", "exclude": "Y"}], "bob", "review")
     row = store.overrides_df().iloc[0]
     assert row["Building Role Override"] == "Ancillary"
     assert row["Verification Override"] == "Verified (manual)"
@@ -52,6 +52,6 @@ def test_partial_override_save_keeps_other_columns(tmp_path):
 
 def test_override_save_can_still_clear_a_column_explicitly(tmp_path):
     store = ControlStore(tmp_path / "control.db")
-    store.save_overrides([dict(building_id="BLDG-000001", exclude="Y")], "ann", "first")
-    store.save_overrides([dict(building_id="BLDG-000001", exclude="")], "ann", "undo")
+    store.save_overrides([{"building_id": "BLDG-000001", "exclude": "Y"}], "ann", "first")
+    store.save_overrides([{"building_id": "BLDG-000001", "exclude": ""}], "ann", "undo")
     assert store.overrides_df().iloc[0]["Exclude (Y)"] == ""

@@ -33,7 +33,7 @@ def test_first_fetch_creates_a_dated_snapshot_with_manifest_and_latest_pointer(i
     res = fetch(base)
     assert res["status"] == "new"
     snap = paths.bronze_snapshot("dfe_gias")
-    assert snap.name == dt.date.today().isoformat() and (snap / "data.csv").read_bytes() == b"a,b\n1,2\n"
+    assert snap.name == dt.date.today().isoformat() and (snap / "data.csv").read_bytes() == b"a,b\n1,2\n"  # noqa: DTZ011 - local time is intended
     m = sources.read_manifest(snap)
     f = m["files"][0]
     assert f["sha256"] == sources.sha256_file(snap / "data.csv") and f["bytes"] == 8 and f["url"].endswith("/data.csv")

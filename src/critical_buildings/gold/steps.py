@@ -78,8 +78,8 @@ def assign_ids(recs, today, store, run_id, pending=None):
         created.setdefault(ids[n], str(today))
     recs["Building ID"] = ids
     recs["Created Date"] = recs["Building ID"].map(created)
-    registry = pd.DataFrame(dict(building_id=recs["Building ID"], os_key=recs.os_key, osm_key=recs.osm_key,
-                                 created=recs["Created Date"], wkt=recs.geometry.to_wkt()))
+    registry = pd.DataFrame({"building_id": recs["Building ID"], "os_key": recs.os_key, "osm_key": recs.osm_key,
+                                 "created": recs["Created Date"], "wkt": recs.geometry.to_wkt()})
     if pending is None:
         store.save_building_registry(registry, run_id)
     else:
@@ -275,7 +275,7 @@ def assemble(recs, sites_df, rule_version, today, store):
     df.loc[has_reason, "Review Status"] = "Open"
     df.loc[has_reason & (df["Review Decision"] != ""), "Review Status"] = "Decided"
     df["Building Role"] = df["Building Role Override"].where(df["Building Role Override"] != "", df["Building Role Default"])
-    ev = lambda o, d: df[o].where(df[o] != "", df[d])     # noqa: E731  (effective value = override, else default)
+    ev = lambda o, d: df[o].where(df[o] != "", df[d])
     df["Primary Category"] = ev("Primary Category Override", "Primary Category Default")
     df["Building Type"] = ev("Building Type Override", "Building Type Default")
     df["Operational Importance"] = ev("Operational Importance Override", "Operational Importance Default")

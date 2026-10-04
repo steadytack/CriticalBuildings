@@ -70,8 +70,8 @@ def _run(area, run_type, notes, reuse_silver, store, rules_version):
     rules = store.ruleset(rules_version).require_valid()
     previous_run_id, previous = runs.load_previous(area)
     ctx = runs.start(store, area, run_type, rules, notes, previous_run_id)
-    state = dict(area=area, rules=rules, store=store, ctx=ctx, today=dt.date.today(), previous=previous,
-                 reuse_silver=reuse_silver)
+    state = {"area": area, "rules": rules, "store": store, "ctx": ctx, "today": dt.date.today(), "previous": previous,  # noqa: DTZ011 - local time is intended
+                 "reuse_silver": reuse_silver}
     try:
         with progress.run(ctx.run_id, store):
             for w in rules.warnings:
@@ -85,5 +85,5 @@ def _run(area, run_type, notes, reuse_silver, store, rules_version):
         raise
     progress.step(f"run {ctx.run_id} done: {state['n_buildings']} buildings in {state['n_sites']} sites "
                   f"({state['gold'].new_ids} new building IDs)")
-    return dict(run_id=ctx.run_id, buildings=state["n_buildings"], sites=state["n_sites"], new_ids=state["gold"].new_ids,
-                dest=ctx.dir, silver_reused=state["silver_reused"], previous_run_id=previous_run_id)
+    return {"run_id": ctx.run_id, "buildings": state["n_buildings"], "sites": state["n_sites"], "new_ids": state["gold"].new_ids,
+                "dest": ctx.dir, "silver_reused": state["silver_reused"], "previous_run_id": previous_run_id}

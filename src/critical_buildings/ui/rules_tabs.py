@@ -105,9 +105,9 @@ def tab_rules(s):
             elif int(ref) in refs:
                 st.error(f"Rule {int(ref)} already exists.")
             else:
-                new_rule = dict(rule_ref=int(ref), primary_category=cat.strip(), building_type=btype.strip(), importance=imp,
-                                importance_driver=driver.strip(), priority=int(prio), active=1, notes="")
-                new_tag = dict(id=None, rule_ref=int(ref), source=src, tag=tag.strip(), active=1, notes="")
+                new_rule = {"rule_ref": int(ref), "primary_category": cat.strip(), "building_type": btype.strip(), "importance": imp,
+                                "importance_driver": driver.strip(), "priority": int(prio), "active": 1, "notes": ""}
+                new_tag = {"id": None, "rule_ref": int(ref), "source": src, "tag": tag.strip(), "active": 1, "notes": ""}
                 try:
                     s.apply_table("rule", [dict(r, active=int(r["active"])) for r in snap["rules"]] + [new_rule], st.session_state["user"], why.strip())
                     s.apply_table("rule_tag", [dict(t, active=int(t["active"])) for t in snap["tags"]] + [new_tag], st.session_state["user"], why.strip())
@@ -228,9 +228,9 @@ def tab_review(s):
             st.write(f"{len(todo)} decision(s) ready to save.")
 
             def save(user, reason):
-                s.save_overrides([dict(building_id=r["Building ID"], review_decision=r["Decision"], building_type_override=r["Type override"],
-                                       exclude="Y" if r["Exclude building"] else "", exclude_site="Y" if r["Exclude whole site"] else "",
-                                       manual_override_notes=r["Notes"]) for r in todo.to_dict("records")], user, reason)
+                s.save_overrides([{"building_id": r["Building ID"], "review_decision": r["Decision"], "building_type_override": r["Type override"],
+                                       "exclude": "Y" if r["Exclude building"] else "", "exclude_site": "Y" if r["Exclude whole site"] else "",
+                                       "manual_override_notes": r["Notes"]} for r in todo.to_dict("records")], user, reason)
 
             save_form("Save decisions", "save_review", len(todo) > 0, save)
 
@@ -255,7 +255,7 @@ def tab_history(s):
     st.subheader("Versions and history")
     snap = s.draft_snapshot()
     try:
-        vid, latest = s.get_version()
+        _, latest = s.get_version()
         if s.has_unpublished_changes():
             st.markdown("**Unpublished draft changes (compared with the published version):**")
             for line in logic.diff_snapshots(latest, snap) or ["(no effective differences)"]:

@@ -57,10 +57,10 @@ def merge(osm, os_, prio):
         if m and m[0] == "proximity" and os_.at[os_i, "building_type"] != osm.at[o, "building_type"]:
             m = None
         if m:
-            pairs.append(dict(os=os_i, osm=o, method=m[0], dist=m[1],
-                              same_type=os_.at[os_i, "building_type"] == osm.at[o, "building_type"],
-                              osm_area=osm.at[o, "geometry"].area,
-                              osm_point=osm.at[o, "geometry"].geom_type == "Point"))
+            pairs.append({"os": os_i, "osm": o, "method": m[0], "dist": m[1],
+                              "same_type": os_.at[os_i, "building_type"] == osm.at[o, "building_type"],
+                              "osm_area": osm.at[o, "geometry"].area,
+                              "osm_point": osm.at[o, "geometry"].geom_type == "Point"})
     pr = pd.DataFrame(pairs)
     match = {}      # os index -> dict(osm=index, method=..., ncand=...)
     if len(pr):
@@ -74,7 +74,7 @@ def merge(osm, os_, prio):
             tied = grp[(grp.mrank == best.mrank)]
             # only a real ambiguity if the tied OSM candidates would classify the building differently
             kinds = {osm.at[int(o), "rule_ref"] for o in tied.osm}
-            match[os_i] = dict(osm=int(best.osm), method=best.method, ncand=len(kinds))
+            match[os_i] = {"osm": int(best.osm), "method": best.method, "ncand": len(kinds)}
     used_osm = {m["osm"] for m in match.values()}
 
     recs = []
@@ -88,9 +88,9 @@ def merge(osm, os_, prio):
     for i, r in os_.iterrows():
         m = match.get(i)
         if m is None:
-            recs.append(dict(source="OS Important Buildings", source_feature_id=r.source_id, name=r["name"],
-                             base=r, os_ref=r.rule_ref, osm_ref=None, method="OS only", confidence="Medium",
-                             review="", geometry=r.geometry, refs=r.matched_refs, osm_building=""))
+            recs.append({"source": "OS Important Buildings", "source_feature_id": r.source_id, "name": r["name"],
+                             "base": r, "os_ref": r.rule_ref, "osm_ref": None, "method": "OS only", "confidence": "Medium",
+                             "review": "", "geometry": r.geometry, "refs": r.matched_refs, "osm_building": ""})
             continue
         o = osm.loc[m["osm"]]
         w = winner(r, o)
@@ -103,23 +103,23 @@ def merge(osm, os_, prio):
             reasons.append(f"{m['ncand']} OSM candidates for this OS building")
         if r.rule_ref != o.rule_ref:
             reasons.append(f"OS rule {r.rule_ref} ({r.building_type}) vs OSM rule {o.rule_ref} ({o.building_type})")
-        recs.append(dict(source="Both", source_feature_id=f"{r.source_id} / {o.source_id}",
-                         name=r["name"] or o["name"], base=w, os_ref=r.rule_ref, osm_ref=o.rule_ref,
-                         method="Overlap" if m["method"] == "overlap" else ("Proximity (names agree)" if names_agree else "Proximity"),
-                         confidence="High" if m["method"] == "overlap" else ("Medium" if (expected_prox or names_agree) else "Low"),
-                         review="; ".join(reasons), osm_building=o.osm_building,
-                         geometry=o.geometry if (r.geometry.geom_type == "Point" and o.geometry.geom_type != "Point")
+        recs.append({"source": "Both", "source_feature_id": f"{r.source_id} / {o.source_id}",
+                         "name": r["name"] or o["name"], "base": w, "os_ref": r.rule_ref, "osm_ref": o.rule_ref,
+                         "method": "Overlap" if m["method"] == "overlap" else ("Proximity (names agree)" if names_agree else "Proximity"),
+                         "confidence": "High" if m["method"] == "overlap" else ("Medium" if (expected_prox or names_agree) else "Low"),
+                         "review": "; ".join(reasons), "osm_building": o.osm_building,
+                         "geometry": o.geometry if (r.geometry.geom_type == "Point" and o.geometry.geom_type != "Point")
                          else r.geometry,
-                         refs=";".join(sorted(set((r.matched_refs + ";" + o.matched_refs).split(";")), key=int))))
+                         "refs": ";".join(sorted(set((r.matched_refs + ";" + o.matched_refs).split(";")), key=int))})
     for j, o in osm.iterrows():
         if j in used_osm:
             continue
         is_area = o.note.startswith("Area feature")      # a site area with no buildings found inside: expected, not a doubt
-        recs.append(dict(source="OSM", source_feature_id=o.source_id, name=o["name"], base=o, os_ref=None,
-                         osm_ref=o.rule_ref, method="OSM area (no buildings)" if is_area else "OSM only",
-                         confidence="Medium", review="",
-                         osm_building=o.osm_building,
-                         geometry=o.geometry, refs=o.matched_refs))
+        recs.append({"source": "OSM", "source_feature_id": o.source_id, "name": o["name"], "base": o, "os_ref": None,
+                         "osm_ref": o.rule_ref, "method": "OSM area (no buildings)" if is_area else "OSM only",
+                         "confidence": "Medium", "review": "",
+                         "osm_building": o.osm_building,
+                         "geometry": o.geometry, "refs": o.matched_refs})
     if not recs:                      # nothing classified in this area: return an empty table with the usual columns
         return gpd.GeoDataFrame({c: [] for c in MERGED_COLUMNS}, geometry="geometry", crs=27700)
     out = pd.DataFrame(recs)
@@ -138,7 +138,7 @@ def merge(osm, os_, prio):
 # ====================================================================================================
 
 def _tokens(name):
-    if name is None or (isinstance(name, float) and name != name):      # None / NaN: no name, no tokens
+    if name is None or (isinstance(name, float) and pd.isna(name)):      # None / NaN: no name, no tokens
         return []
     s = re.sub(r"[^a-z0-9 ]", " ", str(name).lower().replace("&", " and ").replace("st.", "saint").replace("st ", "saint "))
     toks = [t for t in s.split() if t]

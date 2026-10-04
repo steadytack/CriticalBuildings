@@ -109,7 +109,7 @@ def with_ids(store, rows, groups):
 
 def test_site_ids_follow_their_buildings_even_if_group_numbers_change(store):
     r1 = with_ids(store, [A, B, C], [1, 1, 2])
-    out1, s1 = steps.assign_site_ids(r1, sites_of(2, 1), "d", store, "run1")
+    out1, _ = steps.assign_site_ids(r1, sites_of(2, 1), "d", store, "run1")
     sid_ab, sid_c = out1.loc[0, "Site ID"], out1.loc[2, "Site ID"]
     assert {sid_ab, sid_c} == {"SITE-000001", "SITE-000002"}
     r2 = with_ids(store, [A, B, C], [7, 7, 3])                       # same buildings, different group numbers

@@ -257,17 +257,17 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
                 if os_["name"] and _compatible(r.building_type, os_.building_type, categories)                         and name_similarity(r.ref_name, os_["name"]) >= 0.5:
                     reasons.append(f"Possible duplicate of existing site '{os_['name']}' ({os_.building_type})")
                     break
-            new_recs.append(dict(
-                source=r.ref_source, source_feature_id=f"{r.ref_source}:{r.ref_id}", name=r.ref_name,
-                method="Authoritative only", confidence="High" if len(hit) else "Medium", os_ref=None, osm_ref=None,
-                review="; ".join(reasons),
-                geometry=geom, refs=str(rule.rule_ref), category=rule.category, building_type=rule.building_type,
-                importance=rule.importance, driver=rule.driver, rule_ref=rule.rule_ref, rule_notes=rule.notes,
-                osm_building="", site_group=next_group, site_method="Authoritative source", _ref=ri))
-            new_sites.append(dict(site_group=next_group, name=r.ref_name, building_type=rule.building_type,
-                                  category=rule.category, importance=rule.importance, n_buildings=1,
-                                  method="Authoritative source",
-                                  geometry=geom if geom.geom_type != "Point" else geom.buffer(15)))
+            new_recs.append({
+                "source": r.ref_source, "source_feature_id": f"{r.ref_source}:{r.ref_id}", "name": r.ref_name,
+                "method": "Authoritative only", "confidence": "High" if len(hit) else "Medium", "os_ref": None, "osm_ref": None,
+                "review": "; ".join(reasons),
+                "geometry": geom, "refs": str(rule.rule_ref), "category": rule.category, "building_type": rule.building_type,
+                "importance": rule.importance, "driver": rule.driver, "rule_ref": rule.rule_ref, "rule_notes": rule.notes,
+                "osm_building": "", "site_group": next_group, "site_method": "Authoritative source", "_ref": ri})
+            new_sites.append({"site_group": next_group, "name": r.ref_name, "building_type": rule.building_type,
+                                  "category": rule.category, "importance": rule.importance, "n_buildings": 1,
+                                  "method": "Authoritative source",
+                                  "geometry": geom if geom.geom_type != "Point" else geom.buffer(15)})
             by_site[next_group] = ref.loc[[ri]]
             next_group += 1
     if new_recs:
@@ -295,7 +295,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
         stype = sites.loc[sites.site_group == g, "building_type"].iloc[0]
         if rr is None or not len(rr):
             if stype not in covered:
-                info[g] = dict(Verification="Not covered")
+                info[g] = {"Verification": "Not covered"}
             elif g in moved_notes:
                 info[g] = {"Verification": "Unverified", "Verification Note": moved_notes[g]}
             else:

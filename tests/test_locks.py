@@ -29,16 +29,15 @@ def test_the_lock_is_taken_and_released(data):
 
 def test_a_second_operation_is_refused_with_a_message_naming_the_first(data):
     with locks.pipeline_lock("run"):
-        with pytest.raises(locks.LockedError, match=r"Cannot start 'fetch'.*'run'.*already using"):
-            with locks.pipeline_lock("fetch"):
-                pytest.fail("should not get the lock")
+        with (pytest.raises(locks.LockedError, match=r"Cannot start 'fetch'.*'run'.*already using"),
+              locks.pipeline_lock("fetch")):
+            pytest.fail("should not get the lock")
         assert locks.lock_path().exists()                       # the refused attempt must not release the owner's lock
 
 
 def test_the_lock_is_released_when_the_work_fails(data):
-    with pytest.raises(ValueError):
-        with locks.pipeline_lock("run"):
-            raise ValueError("boom")
+    with pytest.raises(ValueError), locks.pipeline_lock("run"):
+        raise ValueError("boom")
     with locks.pipeline_lock("run"):                            # and can be taken again
         pass
 
@@ -56,9 +55,8 @@ def test_a_live_foreign_owner_blocks(data):
     try:
         locks.lock_path().parent.mkdir(parents=True)
         locks.lock_path().write_text(json.dumps({"pid": child.pid, "action": "run", "started": "now"}))
-        with pytest.raises(locks.LockedError, match=str(child.pid)):
-            with locks.pipeline_lock("archive"):
-                pass
+        with pytest.raises(locks.LockedError, match=str(child.pid)), locks.pipeline_lock("archive"):
+            pass
         assert locks.lock_path().exists()
     finally:
         child.kill()
@@ -69,9 +67,8 @@ def test_an_unreadable_fresh_lock_is_treated_as_held_but_an_old_one_as_stale(dat
     p = locks.lock_path()
     p.parent.mkdir(parents=True)
     p.write_text("")                                            # another process is mid-write
-    with pytest.raises(locks.LockedError):
-        with locks.pipeline_lock("run"):
-            pass
+    with pytest.raises(locks.LockedError), locks.pipeline_lock("run"):
+        pass
     old = p.stat().st_mtime - 3600
     os.utime(p, (old, old))                                     # junk left behind long ago
     with locks.pipeline_lock("run"):

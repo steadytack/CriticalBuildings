@@ -7,7 +7,7 @@ from critical_buildings.control.store import now
 
 
 def _run_row(store, run_id):
-    store.insert_run(dict(run_id=run_id, area="a", run_type="dev", status="running", started_at=now(), started_by="t"))
+    store.insert_run({"run_id": run_id, "area": "a", "run_type": "dev", "status": "running", "started_at": now(), "started_by": "t"})
 
 
 def test_calls_are_harmless_without_an_active_run():
@@ -36,10 +36,8 @@ def test_a_run_records_events_and_stage_rows(isolated_paths, store):
 
 def test_a_failing_stage_is_recorded_and_the_error_propagates(isolated_paths, store):
     _run_row(store, "R2")
-    with pytest.raises(ValueError, match="boom"):
-        with progress.run("R2", store):
-            with progress.stage("gold"):
-                raise ValueError("boom")
+    with pytest.raises(ValueError, match="boom"), progress.run("R2", store), progress.stage("gold"):
+        raise ValueError("boom")
     row = progress.stage_summary("R2", store)[0]
     assert row["status"] == "failed" and "boom" in row["detail"]["error"]
     assert progress.read_events("R2")[-1]["status"] == "failed"

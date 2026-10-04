@@ -51,5 +51,5 @@ def test_pipeline_reproduces_the_golden_baseline_with_and_without_silver_reuse(s
 def test_cli_check_passes_on_the_real_repository():
     if not (REPO / "governed" / "control.db").exists():
         pytest.skip("no control store")
-    out = subprocess.run([sys.executable, "-m", "critical_buildings", "check"], cwd=REPO, capture_output=True, text=True)
+    out = subprocess.run([sys.executable, "-m", "critical_buildings", "check"], cwd=REPO, capture_output=True, text=True, check=False)
     assert out.returncode == 0 and "All checks passed" in out.stdout

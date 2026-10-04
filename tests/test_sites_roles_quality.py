@@ -7,8 +7,8 @@ from shapely.geometry import box
 
 from critical_buildings.gold import roles, sites, steps
 
-EDU = dict(category="Education", building_type="Primary School", importance="Medium")
-FIRE = dict(category="Emergency", building_type="Fire Station", importance="High")
+EDU = {"category": "Education", "building_type": "Primary School", "importance": "Medium"}
+FIRE = {"category": "Emergency", "building_type": "Fire Station", "importance": "High"}
 
 
 def recs(*rows):
@@ -43,14 +43,14 @@ def test_a_same_named_stray_just_outside_the_outline_joins_the_site():
     r = recs(("Hall", *EDU.values(), square(10, 10)), ("Greenfield School", *EDU.values(), square(110, 10)),
              ("Somewhere Else", *EDU.values(), square(112, 40)))
     cands = candidates(("Greenfield School", "Education", "OS Functional Site", "fs1", box(0, 0, 100, 60)))
-    out, s = sites.assign_sites(r, cands)
+    out, _ = sites.assign_sites(r, cands)
     assert out.loc[1, "site_group"] == out.loc[0, "site_group"]           # same name, 10 m outside: attached
     assert out.loc[2, "site_group"] != out.loc[0, "site_group"]           # different name: its own site
 
 
 def test_nearby_buildings_without_a_site_polygon_form_a_proximity_cluster():
     r = recs(("", *FIRE.values(), square(0, 0)), ("", *FIRE.values(), square(40, 0)), ("", *FIRE.values(), square(900, 900)))
-    out, s = sites.assign_sites(r, candidates())
+    _, s = sites.assign_sites(r, candidates())
     methods = dict(zip(s.method, s.n_buildings))
     assert methods == {"Proximity cluster": 2, "Single building": 1}
 
@@ -66,7 +66,7 @@ def test_overlapping_os_and_osm_site_polygons_are_one_site_keeping_the_os_name()
 
 def test_a_site_holding_one_building_is_called_a_single_building():
     r = recs(("Hall", *EDU.values(), square(10, 10)))
-    out, s = sites.assign_sites(r, candidates(("S", "Education", "OS Functional Site", "fs1", box(0, 0, 100, 60))))
+    _, s = sites.assign_sites(r, candidates(("S", "Education", "OS Functional Site", "fs1", box(0, 0, 100, 60))))
     assert s.iloc[0].method == "Single building"
 
 
@@ -78,7 +78,7 @@ def test_site_importance_is_the_highest_of_its_buildings():
 
 
 # ------------------------------------------------------------------ roles
-SETTINGS = dict(min_area=150.0, ancillary={"garage"}, primary={"school"}, per_type={"Fire Station": 50.0})
+SETTINGS = {"min_area": 150.0, "ancillary": {"garage"}, "primary": {"school"}, "per_type": {"Fire Station": 50.0}}
 
 
 def role_recs(*rows):

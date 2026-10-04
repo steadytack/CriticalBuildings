@@ -7,7 +7,7 @@ import getpass
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -39,13 +39,13 @@ TABLE_COLS = {"rule": RULE_COLS, "rule_tag": TAG_COLS, "reference_mapping": MAP_
 
 
 def now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def current_user():
     try:
         return getpass.getuser()
-    except Exception:
+    except (OSError, KeyError, ImportError):      # no user name available (some services, containers)
         return "unknown"
 
 
@@ -133,10 +133,10 @@ class ControlStore:
         role = snap["role"]
         return rs.RuleSet(
             version_id=vid, label=rs.version_label(vid, snap), snapshot=snap, tags=tags,
-            role=dict(min_area=float(role["min_area"]), ancillary=set(role["ancillary"]), primary=set(role["primary"]),
-                      per_type={k: float(v) for k, v in role["per_type"].items()}),
-            mapping=[dict(source=m["source"], field=m["field"], match=m["match"], value=m["value"],
-                          building_type=m["building_type"]) for m in snap["reference_mapping"] if m["active"]],
+            role={"min_area": float(role["min_area"]), "ancillary": set(role["ancillary"]), "primary": set(role["primary"]),
+                      "per_type": {k: float(v) for k, v in role["per_type"].items()}},
+            mapping=[{"source": m["source"], "field": m["field"], "match": m["match"], "value": m["value"],
+                          "building_type": m["building_type"]} for m in snap["reference_mapping"] if m["active"]],
             errors=errors, warnings=warnings)
 
     def versions_df(self):

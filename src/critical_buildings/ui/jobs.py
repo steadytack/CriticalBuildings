@@ -40,7 +40,7 @@ def start_job(label, *cli_args):
     """Start a command in the background. Returns the job id."""
     d = jobs_dir()
     d.mkdir(parents=True, exist_ok=True)
-    job_id = datetime.now().strftime("%Y%m%dT%H%M%S")
+    job_id = datetime.now().strftime("%Y%m%dT%H%M%S")  # noqa: DTZ005 - local time is intended
     out, exit_file = d / f"{job_id}.out", d / f"{job_id}.exit"
     flags = (0x08000000 | 0x00000200) if os.name == "nt" else 0       # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP (no stray console to close)
     env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
@@ -49,7 +49,7 @@ def start_job(label, *cli_args):
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     (d / f"{job_id}.json").write_text(json.dumps({
         "id": job_id, "label": label, "args": [str(a) for a in cli_args], "pid": proc.pid,
-        "started": datetime.now().isoformat(timespec="seconds")}), encoding="utf-8")
+        "started": datetime.now().isoformat(timespec="seconds")}), encoding="utf-8")  # noqa: DTZ005 - local time is intended
     return job_id
 
 

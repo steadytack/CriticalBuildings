@@ -161,8 +161,8 @@ def write_docs(xw, df, sites, version, today, changes, out):
              "This dataset combines the sources below. Include the attribution lines when you share or publish it.", ""]
     for name, use, lic, attr, files, date, size in src:
         lines += [f"{name} - {lic}", f"  {attr}", ""]
-    lines += ["Note: OpenStreetMap data is under the ODbL (share-alike). Check with your information governance "
-              "or legal team before distributing this dataset outside the organisation.", ""]
+    lines += [("Note: OpenStreetMap data is under the ODbL (share-alike). Check with your information governance "
+               "or legal team before distributing this dataset outside the organisation."), ""]
     (out / "ATTRIBUTION.txt").write_text("\n".join(lines), encoding="utf-8")
 
     # ---- data dictionary workbook ----
@@ -180,11 +180,11 @@ def write_docs(xw, df, sites, version, today, changes, out):
     readme = pd.DataFrame({"Critical Buildings dataset - read me": [
         f"Run date: {today}   Rules version: {version}",
         "Area: Suffolk (pilot).",
-        "Files: dataset.gpkg (layers buildings and sites), buildings.csv and sites.csv (one row per building / site), "
-        "report.xlsx (this workbook: Summary sheet = slim view, QA sheets, dictionary). The QA map is drawn on demand in the UI.",
+        ("Files: dataset.gpkg (layers buildings and sites), buildings.csv and sites.csv (one row per building / site), "
+         "report.xlsx (this workbook: Summary sheet = slim view, QA sheets, dictionary). The QA map is drawn on demand in the UI."),
         "Start with the summary CSV. Use 'Building Type', 'Operational Importance', 'Building Role' and 'Verification'.",
-        "Fields ending in Default come from the rules; fields ending in Override are manual. 'Building Type' and similar "
-        "un-suffixed fields show the final value.",
+        ("Fields ending in Default come from the rules; fields ending in Override are manual. 'Building Type' and similar "
+         "un-suffixed fields show the final value."),
         "Sheets: Buildings columns, Sites columns, Values, Quality score, Sources and licences, Methodology, Known limitations, Release.",
     ]})
     values = pd.DataFrame([
@@ -215,14 +215,14 @@ def write_docs(xw, df, sites, version, today, changes, out):
     method = pd.DataFrame({"Step": [
         "1. Rules check: the Rules, Role settings and Reference mapping sheets are validated; the run stops with plain-English errors if wrong.",
         "2. Classify: each OSM feature (tags) and OS Important Building / station (theme > classification) is matched to a rule. The lowest Priority number wins.",
-        "3. Merge: an OS building and an OSM feature are the same building if same category (same building type outside Education) and they overlap "
-        f"(>= {config.get().merge.overlap_fraction:.0%} of the OS polygon) or are within {config.get().merge.point_distance_m} m "
-        f"(stations {config.get().merge.point_distance_by_type.get('Railway Station')} m). Proximity-only matches need the same type and similar names.",
-        f"4. Sites: buildings are grouped by OS Functional Site, then OSM site/area polygon, then {config.get().sites.cluster_gap_m} m proximity cluster; "
-        "same-named strays within "
-        f"{config.get().sites.attach_m} m join the site.",
-        "5. Authoritative check: DfE, CQC and NHS ODS records are matched to sites by type, distance and name. Unmatched register records are added as new buildings; "
-        "same-name records of a different type reclassify the site; sites no register recognises are marked Unverified.",
+        ("3. Merge: an OS building and an OSM feature are the same building if same category (same building type outside Education) and they overlap "
+         f"(>= {config.get().merge.overlap_fraction:.0%} of the OS polygon) or are within {config.get().merge.point_distance_m} m "
+         f"(stations {config.get().merge.point_distance_by_type.get('Railway Station')} m). Proximity-only matches need the same type and similar names."),
+        (f"4. Sites: buildings are grouped by OS Functional Site, then OSM site/area polygon, then {config.get().sites.cluster_gap_m} m proximity cluster; "
+         "same-named strays within "
+         f"{config.get().sites.attach_m} m join the site."),
+        ("5. Authoritative check: DfE, CQC and NHS ODS records are matched to sites by type, distance and name. Unmatched register records are added as new buildings; "
+         "same-name records of a different type reclassify the site; sites no register recognises are marked Unverified."),
         "6. Roles: buildings are labelled Primary / Ancillary / Standalone / Whole site / Unknown from footprint size and OSM building tags (Role settings sheet).",
         "7. Overrides: manual decisions recorded in the control store (rules UI, Review & decisions) are applied last and survive reruns. Building IDs and Site IDs stay stable between runs.",
         "8. Outputs, QA workbook, map and this dictionary are regenerated; changes since the previous run are listed in report.xlsx.xlsx.",

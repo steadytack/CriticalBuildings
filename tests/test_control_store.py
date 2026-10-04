@@ -16,8 +16,8 @@ from critical_buildings.control.store import ControlError, ControlStore
 # ------------------------------------------------------------------ edits and audit
 def test_every_change_needs_a_reason(store):
     with pytest.raises(ControlError, match="reason is required"):
-        store.apply_table("rule", [dict(rule_ref=1, primary_category="A", building_type="B", importance="High",
-                                        importance_driver="d", priority=50, active=1, notes="")], "me", " ")
+        store.apply_table("rule", [{"rule_ref": 1, "primary_category": "A", "building_type": "B", "importance": "High",
+                                        "importance_driver": "d", "priority": 50, "active": 1, "notes": ""}], "me", " ")
 
 
 def test_apply_table_inserts_updates_and_deletes_with_audit(seeded_store):
@@ -43,7 +43,7 @@ def test_apply_table_inserts_updates_and_deletes_with_audit(seeded_store):
 def test_new_tag_row_gets_an_id(seeded_store):
     s = seeded_store
     tags = [{**t, "active": 1} for t in s.draft_snapshot()["tags"]]
-    tags.append(dict(rule_ref=1, source="OSM", tag="emergency=fire_hydrant", active=1, notes=""))
+    tags.append({"rule_ref": 1, "source": "OSM", "tag": "emergency=fire_hydrant", "active": 1, "notes": ""})
     s.apply_table("rule_tag", tags, "ann", "new tag")
     assert max(t["id"] for t in s.draft_snapshot()["tags"]) == 7
 
@@ -115,8 +115,8 @@ def test_content_hash_ignores_key_order():
 
 # ------------------------------------------------------------------ decisions
 def test_overrides_round_trip_with_pipeline_column_names(store):
-    store.save_overrides([dict(building_id="BLDG-000001", building_type_override="Hospital",
-                               manual_override_notes="checked", exclude="Y")], "ann", "review")
+    store.save_overrides([{"building_id": "BLDG-000001", "building_type_override": "Hospital",
+                               "manual_override_notes": "checked", "exclude": "Y"}], "ann", "review")
     df = store.overrides_df()
     row = df.iloc[0]
     assert row["Building ID"] == "BLDG-000001" and row["Building Type Override"] == "Hospital"

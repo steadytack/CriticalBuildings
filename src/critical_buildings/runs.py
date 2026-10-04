@@ -59,7 +59,7 @@ def load_previous(area):
 
 # ------------------------------------------------------------------ lifecycle
 def new_run_id(area):
-    return dt.datetime.now().strftime("%Y%m%dT%H%M%S") + "_" + area
+    return dt.datetime.now().strftime("%Y%m%dT%H%M%S") + "_" + area  # noqa: DTZ005 - local time is intended
 
 
 def start(store, area, run_type, rules, notes="", previous_run_id=None, user=None):
@@ -70,12 +70,12 @@ def start(store, area, run_type, rules, notes="", previous_run_id=None, user=Non
     dest.mkdir(parents=True)
     ctx = RunContext(run_id, area, run_type, now(), dest, previous_run_id)
     inputs = lineage.bronze_inputs(area)
-    store.insert_run(dict(
-        run_id=run_id, area=area, run_type=run_type, status="running", started_at=ctx.started_at,
-        started_by=user or current_user(), rule_version_id=rules.version_id, rule_version_label=rules.label,
-        config_hash=config.settings_hash(), bronze_key=paths.bronze_key(area),
-        bronze_snapshots_json=json.dumps([{"source": i["source"], "area": i["area"], "snapshot": i["snapshot"]} for i in inputs]),
-        git_commit=lineage.git_info()["commit"], previous_run_id=previous_run_id, notes=notes))
+    store.insert_run({
+        "run_id": run_id, "area": area, "run_type": run_type, "status": "running", "started_at": ctx.started_at,
+        "started_by": user or current_user(), "rule_version_id": rules.version_id, "rule_version_label": rules.label,
+        "config_hash": config.settings_hash(), "bronze_key": paths.bronze_key(area),
+        "bronze_snapshots_json": json.dumps([{"source": i["source"], "area": i["area"], "snapshot": i["snapshot"]} for i in inputs]),
+        "git_commit": lineage.git_info()["commit"], "previous_run_id": previous_run_id, "notes": notes})
     return ctx
 
 
@@ -102,7 +102,7 @@ def fail(store, ctx, exc):
 # ------------------------------------------------------------------ releases
 def next_release_name(store, today=None):
     """v<YYYY>.<MM>.<n>: n counts releases already made in that month."""
-    today = today or dt.date.today()
+    today = today or dt.date.today()  # noqa: DTZ011 - local time is intended
     prefix = f"v{today.year}.{today.month:02d}."
     existing = [r for r in store.releases_df()["release"] if r.startswith(prefix)]
     return f"{prefix}{len(existing)}"

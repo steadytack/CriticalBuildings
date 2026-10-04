@@ -53,7 +53,7 @@ def write_manifest(source, snapshot_dir, files, area=None, retrieved_at=None, no
         "source_name": cat.get("name", source),
         "area": area,
         "snapshot": snapshot_dir.name,
-        "retrieved_at": retrieved_at or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "retrieved_at": retrieved_at or dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "licence": cat.get("licence", ""),
         "attribution": " ".join(str(cat.get("attribution", "")).split()),
         "files": entries,
@@ -175,8 +175,7 @@ def http_download(url, dest, retries=3, post_data=None, timeout=400, validate=No
                 r = requests.post(url, data=post_data, stream=True, timeout=timeout, headers=HEADERS)
             if r.status_code == 200:
                 with open(dest, "wb") as f:
-                    for chunk in r.iter_content(1 << 20):
-                        f.write(chunk)
+                    f.writelines(r.iter_content(1 << 20))
                 if validate is None:
                     return
                 try:
@@ -228,7 +227,7 @@ def snapshot(source, specs, area=None, dry_run=False, note=""):
             if old == new_hashes:
                 log.info("%s unchanged since %s - nothing stored", source, latest)
                 return {"status": "unchanged", "snapshot": latest}
-        dest = _unique_snapshot_dir(source_dir, dt.date.today())
+        dest = _unique_snapshot_dir(source_dir, dt.date.today())  # noqa: DTZ011 - local time is intended
         shutil.move(str(tmp), str(dest))
         write_manifest(source, dest, [{"name": s["name"], "url": s["url"]} for s in specs], area=area, note=note)
         set_latest(source, dest.name, area)
@@ -313,7 +312,7 @@ def _reachable(url):
 def fetch_dfe(dry_run=False, today=None):
     """GIAS publishes a date-stamped file; try today and the previous days."""
     cat = load_sources()["dfe_gias"]
-    today = today or dt.date.today()
+    today = today or dt.date.today()  # noqa: DTZ011 - local time is intended
     for back in range(4):
         url = cat["url"].format(yyyymmdd=(today - dt.timedelta(days=back)).strftime("%Y%m%d"))
         if dry_run or _reachable(url):

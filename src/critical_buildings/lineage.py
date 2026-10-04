@@ -18,9 +18,10 @@ VOLATILE = ["Run Date", "Last Edit Date", "Rule Version", "Run ID"]
 def git_info():
     """Commit hash of the code that ran, and whether there were uncommitted changes."""
     try:
-        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=paths.ROOT, capture_output=True, text=True, timeout=10)
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=paths.ROOT, capture_output=True, text=True,
+                                timeout=10, check=False)
         dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "settings.yml"], cwd=paths.ROOT, capture_output=True,
-                               text=True, timeout=10)
+                               text=True, timeout=10, check=False)
         if commit.returncode != 0:
             return {"commit": "", "dirty": None}
         return {"commit": commit.stdout.strip(), "dirty": bool(dirty.stdout.strip())}
@@ -67,7 +68,7 @@ def build_lineage(ctx, rules, silver_key, silver_reused, gold, dest, deliverable
         "bronze": {"key": paths.bronze_key(ctx.area), "snapshots": bronze_inputs(ctx.area)},
         "silver": {"key": silver_key, "reused": silver_reused},
         "gold": {
-            "buildings": int(len(df)), "sites": int(len(gold.sites_out)), "new_building_ids": int(gold.new_ids),
+            "buildings": len(df), "sites": len(gold.sites_out), "new_building_ids": int(gold.new_ids),
             "by_source": df["Source"].value_counts().sort_index().to_dict(),
             "by_verification": df["Verification"].value_counts().sort_index().to_dict(),
             "previous_run_id": ctx.previous_run_id, "changes_vs_previous": changes,

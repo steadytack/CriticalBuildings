@@ -124,8 +124,8 @@ def test_reference_mapping_checks():
 def test_reference_mapping_ignore_and_inactive_rows():
     s = snap()
     s["reference_mapping"][1]["building_type"] = "IGNORE"
-    s["reference_mapping"].append(dict(sort_order=3, source="CQC", field="x", match="Contains", value="y",
-                                       building_type="Nonsense", active=False, notes=""))
+    s["reference_mapping"].append({"sort_order": 3, "source": "CQC", "field": "x", "match": "Contains", "value": "y",
+                                       "building_type": "Nonsense", "active": False, "notes": ""})
     assert validate.check_reference_mapping(s) == []
 
 

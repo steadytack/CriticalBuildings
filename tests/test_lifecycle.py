@@ -10,7 +10,7 @@ from critical_buildings import config, lineage, paths, retention, runs
 from critical_buildings.control.store import ControlError
 from critical_buildings.publish import DELIVERABLES
 
-NOW = dt.datetime(2026, 10, 1, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2026, 10, 1, tzinfo=dt.UTC)
 
 
 def iso(days_ago):
@@ -20,9 +20,9 @@ def iso(days_ago):
 def make_run(store, run_id, days_ago=1, run_type="candidate", status="succeeded", silver_key=None, bronze=None,
              area="suffolk", on_disk=True):
     """A registered run with a gold folder holding every deliverable plus lineage.json."""
-    store.insert_run(dict(run_id=run_id, area=area, run_type=run_type, status=status, started_at=iso(days_ago),
-                          silver_key=silver_key, bronze_key="bk-" + run_id,
-                          bronze_snapshots_json=json.dumps(bronze or [])))
+    store.insert_run({"run_id": run_id, "area": area, "run_type": run_type, "status": status, "started_at": iso(days_ago),
+                          "silver_key": silver_key, "bronze_key": "bk-" + run_id,
+                          "bronze_snapshots_json": json.dumps(bronze or [])})
     if on_disk:
         d = runs.run_dir(area, run_id)
         d.mkdir(parents=True)

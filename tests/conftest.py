@@ -5,9 +5,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-import helpers  # noqa: E402
+import helpers
 
-from critical_buildings.control.store import ControlStore  # noqa: E402
+from critical_buildings.control.store import ControlStore
 
 
 @pytest.fixture
