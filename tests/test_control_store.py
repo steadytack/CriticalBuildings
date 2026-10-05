@@ -175,8 +175,7 @@ def test_old_database_is_upgraded_in_place(tmp_path):
     c = sqlite3.connect(db)
     assert c.execute("PRAGMA user_version").fetchone()[0] == store_mod.SCHEMA_VERSION
     tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert {"run", "release", "run_change"} <= tables
-    assert "site_id" in [r[1] for r in c.execute("PRAGMA table_info(building_registry)")]
+    assert not set(store_mod.STATE_TABLES) & tables                # the operational tables moved to the state database
     assert len(s.draft_snapshot()["rules"]) == 1                   # existing data survives
 
 
@@ -191,3 +190,35 @@ def test_dump_is_one_deterministic_readable_file(seeded_store, tmp_path):
     for section in ("rule", "rule_tag", "reference_mapping", "role_settings", "override", "rule_set_version", "change_log"):
         assert f"\n## {section} (" in text
     assert "Fire Station" in text
+
+
+def test_legacy_store_runs_and_registries_move_to_the_state_database(tmp_path):
+    """An older control.db that still holds runs and ID registries is upgraded: the rows are copied to the state
+    database, then dropped from the governed file."""
+    import sqlite3
+    from pathlib import Path
+
+    from critical_buildings.control import store as store_mod
+    db = tmp_path / "control.db"
+    c = sqlite3.connect(db)
+    here = Path(store_mod.__file__).parent
+    for target, filename in store_mod.MIGRATIONS[:4]:
+        c.executescript((here / filename).read_text(encoding="utf-8"))
+        c.execute(f"PRAGMA user_version = {target}")
+    c.execute("INSERT INTO rule VALUES (1, 'A', 'B', 'High', 'd', 50, 1, '')")
+    c.execute("INSERT INTO run (run_id, area, run_type, status, started_at) VALUES ('R1', 'x', 'dev', 'succeeded', 't')")
+    c.execute("INSERT INTO release VALUES ('v1', 'x', 'R1', 't', 'ann', '')")
+    c.execute("INSERT INTO building_registry VALUES ('BLDG-000001', 'os1', NULL, '2026-01-01', 'POINT (1 2)', 'R1', 'R1', NULL, 'SITE-000001')")
+    c.execute("INSERT INTO site_registry VALUES ('SITE-000001', '2026-01-01', 'R1', 'R1', NULL)")
+    c.commit()
+    c.close()
+    s = ControlStore(db)
+    assert s.get_run("R1")["area"] == "x" and list(s.releases_df().release) == ["v1"]
+    assert s.building_site_map() == {"BLDG-000001": "SITE-000001"}
+    assert list(s.site_registry_df().site_id) == ["SITE-000001"]
+    assert len(s.draft_snapshot()["rules"]) == 1                   # governed data is untouched
+    g = sqlite3.connect(db)
+    assert not {r[0] for r in g.execute("SELECT name FROM sqlite_master WHERE type='table'")} & set(store_mod.STATE_TABLES)
+    g.close()
+    ControlStore(db)                                               # opening it again changes nothing
+    assert s.get_run("R1")["area"] == "x"

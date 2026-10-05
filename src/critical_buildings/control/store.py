@@ -16,8 +16,12 @@ from critical_buildings import paths
 from critical_buildings.control import rules as rs
 
 MIGRATIONS = [(1, "schema.sql"), (2, "migrations/002_runs.sql"), (3, "migrations/003_registry_site.sql"),
-              (4, "migrations/004_run_stage.sql")]     # (schema version, file); applied in order
+              (4, "migrations/004_run_stage.sql"),
+              (5, "migrations/005_drop_operational.sql")]     # (schema version, file); applied in order
 SCHEMA_VERSION = MIGRATIONS[-1][0]
+STATE_SCHEMA = "state_schema.sql"
+# Tables of the operational state database (data/state.db), parents before children. Everything else is governed.
+STATE_TABLES = ("building_registry", "site_registry", "run", "release", "run_change", "run_stage")
 
 RULE_COLS = ["rule_ref", "primary_category", "building_type", "importance", "importance_driver", "priority", "active", "notes"]
 TAG_COLS = ["id", "rule_ref", "source", "tag", "active", "notes"]
@@ -54,18 +58,29 @@ class ControlError(Exception):
 
 
 class ControlStore:
-    def __init__(self, path=None):
+    def __init__(self, path=None, state_path=None):
+        """path: the governed rules store (default governed/control.db, in git). state_path: the operational state
+        database holding runs, releases and the ID registries (default data/state.db, not in git). When only `path` is
+        given the state database sits next to it, so a store in a temp folder never touches the real state."""
         self.path = Path(path) if path else paths.CONTROL / "control.db"
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if state_path:
+            self.state_path = Path(state_path)
+        elif path:
+            self.state_path = self.path.with_name(self.path.stem + ".state.db")
+        else:
+            self.state_path = paths.DATA / "state.db"
+        for p in (self.path, self.state_path):
+            p.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
-    # ------------------------------------------------------------ connection
+    # ------------------------------------------------------------ connections
+    @staticmethod
     @contextmanager
-    def conn(self):
-        c = sqlite3.connect(self.path)
+    def _connect(path):
+        c = sqlite3.connect(path)
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA foreign_keys = ON")
-        c.execute("PRAGMA journal_mode = DELETE")        # one file on disk (no -wal/-shm), friendly to git
+        c.execute("PRAGMA journal_mode = DELETE")        # one file on disk (no -wal/-shm)
         try:
             yield c
             c.commit()
@@ -75,14 +90,49 @@ class ControlStore:
         finally:
             c.close()
 
+    def conn(self):
+        """The governed store: rules, versions, decisions and the audit trail (governed/control.db)."""
+        return self._connect(self.path)
+
+    def state_conn(self):
+        """The operational state: runs, releases and the ID registries (data/state.db)."""
+        return self._connect(self.state_path)
+
     def _init_schema(self):
+        with self.state_conn() as c:
+            if c.execute("PRAGMA user_version").fetchone()[0] < 1:
+                c.executescript((Path(__file__).parent / STATE_SCHEMA).read_text(encoding="utf-8"))
+                c.execute("PRAGMA user_version = 1")
+        moved = False
         with self.conn() as c:
             version = c.execute("PRAGMA user_version").fetchone()[0]
             for target, filename in MIGRATIONS:
                 if version < target:
+                    if target == 5:
+                        self._copy_legacy_state(c)
+                        moved = True
                     c.executescript((Path(__file__).parent / filename).read_text(encoding="utf-8"))
                     c.execute(f"PRAGMA user_version = {target}")
                     version = target
+        if moved:
+            vacuum = sqlite3.connect(self.path)          # give the dropped tables' pages back so the committed file shrinks
+            try:
+                vacuum.execute("VACUUM")
+            finally:
+                vacuum.close()
+
+    def _copy_legacy_state(self, governed):
+        """One-off upgrade: copy the runs, releases and ID registries out of an older governed store into the state
+        database before migration 5 drops them there. Repeating it after an interruption is harmless: rows already
+        copied are left as they are."""
+        governed.commit()                                # release the governed file's write lock before attaching it
+        with self.state_conn() as s:
+            s.execute("ATTACH DATABASE ? AS legacy", (str(self.path),))
+            for table in STATE_TABLES:
+                cols = ", ".join(r["name"] for r in s.execute(f"PRAGMA main.table_info({table})"))
+                s.execute(f"INSERT OR IGNORE INTO main.{table} ({cols}) SELECT {cols} FROM legacy.{table}")
+            s.commit()
+            s.execute("DETACH DATABASE legacy")
 
     def _log(self, c, user, table, key, action, old, new, reason):
         c.execute("INSERT INTO change_log (ts, user, table_name, key, action, old_json, new_json, reason) VALUES (?,?,?,?,?,?,?,?)",
@@ -98,7 +148,7 @@ class ControlStore:
             self._log(c, user, "settings.yml", setting, "update", old, new, reason.strip())
 
     def table_df(self, table, order=None):
-        with self.conn() as c:
+        with (self.state_conn() if table in STATE_TABLES else self.conn()) as c:
             return pd.read_sql_query(f"SELECT * FROM {table}" + (f" ORDER BY {order}" if order else ""), c)
 
     def draft_snapshot(self):
@@ -279,7 +329,7 @@ class ControlStore:
     def save_building_registry(self, df, run_id):
         """df columns: building_id, os_key, osm_key, created, wkt. New IDs are inserted, seen ones refreshed,
         IDs absent from this run are marked retired (never deleted)."""
-        with self.conn() as c:
+        with self.state_conn() as c:
             self._save_building_registry(c, df, run_id)
 
     def _save_building_registry(self, c, df, run_id):
@@ -296,13 +346,13 @@ class ControlStore:
 
     def building_site_map(self):
         """{building_id: site_id it was last assigned to} (empty strings and NULLs are left out)."""
-        with self.conn() as c:
+        with self.state_conn() as c:
             return {r["building_id"]: r["site_id"] for r in c.execute(
                 "SELECT building_id, site_id FROM building_registry WHERE site_id IS NOT NULL AND site_id != ''")}
 
     def set_building_sites(self, mapping):
         """mapping: {building_id: site_id}. Called after Site IDs are assigned."""
-        with self.conn() as c:
+        with self.state_conn() as c:
             self._set_building_sites(c, mapping)
 
     def _set_building_sites(self, c, mapping):
@@ -315,7 +365,7 @@ class ControlStore:
 
     def save_site_registry(self, created, run_id):
         """created: {site_id: created_date}. Same append-only rules as buildings."""
-        with self.conn() as c:
+        with self.state_conn() as c:
             self._save_site_registry(c, created, run_id)
 
     def _save_site_registry(self, c, created, run_id):
@@ -329,7 +379,7 @@ class ControlStore:
         """Write the building and site registries a run computed ({'buildings': df, 'sites': {...}, 'building_sites': {...}},
         see steps.assign_ids) in one transaction. Called only once the run has succeeded, so a failed run never
         mints IDs or retires buildings."""
-        with self.conn() as c:
+        with self.state_conn() as c:
             if "buildings" in pending:
                 self._save_building_registry(c, pending["buildings"], run_id)
             if "sites" in pending:
@@ -339,58 +389,57 @@ class ControlStore:
 
     # ------------------------------------------------------------ runs and releases
     def insert_run(self, row):
-        with self.conn() as c:
+        with self.state_conn() as c:
             names = ", ".join(row)
             c.execute(f"INSERT INTO run ({names}) VALUES ({', '.join('?' * len(row))})", tuple(row.values()))
 
     def update_run(self, run_id, **fields):
-        with self.conn() as c:
+        with self.state_conn() as c:
             sets = ", ".join(f"{k} = ?" for k in fields)
             c.execute(f"UPDATE run SET {sets} WHERE run_id = ?", (*fields.values(), run_id))
 
     def get_run(self, run_id):
-        with self.conn() as c:
+        with self.state_conn() as c:
             row = c.execute("SELECT * FROM run WHERE run_id = ?", (run_id,)).fetchone()
         return dict(row) if row else None
 
     def save_stage(self, run_id, stage, **fields):
         """Insert or update what one stage of a run did (status, timing, counts)."""
-        with self.conn() as c:
+        with self.state_conn() as c:
             cols = ["run_id", "stage", *fields]
             sets = ", ".join(f"{k} = excluded.{k}" for k in fields)
             c.execute(f"INSERT INTO run_stage ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "
                       f"ON CONFLICT(run_id, stage) DO UPDATE SET {sets}", (run_id, stage, *fields.values()))
 
     def stages_df(self, run_id=None):
-        with self.conn() as c:
+        with self.state_conn() as c:
             q = "SELECT * FROM run_stage" + (" WHERE run_id = ?" if run_id else "") + " ORDER BY started_at"
             return pd.read_sql_query(q, c, params=(run_id,) if run_id else ())
 
     def runs_df(self, area=None):
-        with self.conn() as c:
+        with self.state_conn() as c:
             q = "SELECT * FROM run" + (" WHERE area = ?" if area else "") + " ORDER BY started_at DESC"
             return pd.read_sql_query(q, c, params=(area,) if area else ())
 
     def add_run_changes(self, run_id, changes_df):
         if changes_df is None or changes_df.empty:
             return
-        with self.conn() as c:
+        with self.state_conn() as c:
             c.executemany(
                 "INSERT INTO run_change (run_id, building_id, change, before_value, after_value, source_feature_id) VALUES (?,?,?,?,?,?)",
                 [(run_id, r["Building ID"], r["Change"], r["Before / Type"], r["After"], r["Source Feature ID"])
                  for r in changes_df.to_dict("records")])
 
     def run_changes_df(self, run_id):
-        with self.conn() as c:
+        with self.state_conn() as c:
             return pd.read_sql_query("SELECT * FROM run_change WHERE run_id = ?", c, params=(run_id,))
 
     def insert_release(self, release, area, run_id, user, notes=""):
-        with self.conn() as c:
+        with self.state_conn() as c:
             c.execute("INSERT INTO release (release, area, run_id, released_at, released_by, notes) VALUES (?,?,?,?,?,?)",
                       (release, area, run_id, now(), user, notes))
             c.execute("UPDATE run SET run_type = 'release' WHERE run_id = ?", (run_id,))
-            self._log(c, user, "release", release, "publish", None, {"run_id": run_id, "area": area}, notes or "release")
 
     def releases_df(self):
-        with self.conn() as c:
+        with self.state_conn() as c:
             return pd.read_sql_query("SELECT * FROM release ORDER BY released_at DESC", c)

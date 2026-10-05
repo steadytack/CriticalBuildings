@@ -4,7 +4,7 @@
 *.yml text eol=lf
 *.sql text eol=lf
 
-# Binary stores: never diffed or merged as text. Review rule changes in control/dumps/*.csv instead.
+# Binary stores: never diffed or merged as text. Review rule changes in governed/control_dump.txt instead.
 *.db binary
 *.gpkg binary
 *.xlsx binary

@@ -37,7 +37,7 @@ flowchart LR
         gold[(Gold<br/>merged buildings and sites<br/>one folder per run)]
     end
     pub[Published releases]
-    ctl{{Control store<br/>rules, decisions, IDs}}
+    ctl{{Control store<br/>rules and decisions}}
     sources --> bronze --> silver --> gold --> pub
     ctl -. rules and decisions .-> silver
     ctl -. rules and decisions .-> gold
@@ -50,7 +50,8 @@ flowchart LR
 4. **Releases** are immutable copies of a run that you share.
 
 The **rules and human decisions** live in a small database (`governed/control.db`) with an editor UI, an audit trail and
-numbered versions, not in code. Details: [docs/guide.md](docs/guide.md).
+numbered versions, not in code. Run history and the Building / Site ID registries are kept separately in `data/state.db`
+(not in git), so building a dataset never changes the committed rules store. Details: [docs/guide.md](docs/guide.md).
 
 ## Quick start
 
@@ -109,7 +110,7 @@ src/critical_buildings/   the code: sources.py, silver.py, gold/, publish.py (th
                    control/ (rules store), ui/ (the web UI), cli.py
 tests/             automated tests (unit + an end-to-end regression against a golden baseline)
 docs/              guide.md (how it works, rules, runs, lineage, contributing) and governance.md (roles, checks, licences, decisions)
-data/              (not in git)  bronze/ silver/ gold/ published/ archive/ logs/
+data/              (not in git)  bronze/ silver/ gold/ published/ archive/ logs/ and state.db (runs, releases, ID registries)
 ```
 
 The original Excel rules workbook and the one-off migration scripts were removed from the working tree; they are in git
@@ -139,5 +140,6 @@ UPRN counts and the DESNZ/BUUK columns are reserved but not populated. The full 
   PATH is being probed. Harmless; ignore them (or remove the stray GDAL entry from PATH / `GDAL_DRIVER_PATH`).
 - **Windows shows "fatal exception" lines in a test run:** harmless DLL-loading noise; tests disable that handler.
 - **The UI says nothing is published:** `governed/control.db` is missing or empty: restore it from a backup or from git history.
+- **IDs restarted from BLDG-000001, or the Runs tab is empty:** `data/state.db` is missing. It holds the ID registries and run history and is not in git, so keep a backup of it. Restore the file; a released dataset still carries its IDs.
 
 Contributing: [docs/guide.md](docs/guide.md#contributing).

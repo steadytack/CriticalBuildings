@@ -20,7 +20,9 @@ Everything generated lives under `data/` (git-ignored). Human-governed inputs ar
 | **Logs** | `data/logs/` | One `<run id>.jsonl` per run (every stage, step and count, kept even if the run failed) and the output of jobs started from the UI. | Appended during a run. | n/a |
 
 The **control plane** is separate: `settings.yml` (thresholds, areas, source catalogue), `governed/control.db` (rules,
-versions, audit trail, human decisions, identity registries, run and release registry) and `governed/control_dump.txt` (a text copy for review).
+versions, audit trail and human decisions) and `governed/control_dump.txt` (a text copy for review). What the pipeline *does* is
+recorded apart from that, in `data/state.db` (not in git): the run and release registry, per-stage timings and counts, per-run changes and the
+append-only Building and Site ID registries. A build only ever writes to `state.db`, so the committed rules store changes only when someone edits rules.
 
 ```mermaid
 flowchart TB
@@ -32,9 +34,12 @@ flowchart TB
         b[(bronze)] --> sc[(silver conformed)] --> sk[(silver classified)] --> g[(gold runs)] --> p[(published releases)]
         g --> a[(archive)]
         b --> a
+        st[(data/state.db: runs, releases, ID registries)]
     end
     db -- rule version --> sk
-    db -- overrides, ID registries --> g
+    db -- overrides --> g
+    st -- ID registries --> g
+    g -- runs, releases --> st
     cfg -- thresholds, area --> sk
     cfg -- thresholds --> g
 ```
@@ -101,6 +106,9 @@ site is *Primary*; OSM `building=` values that are always Ancillary or Primary; 
 **Storage.** Rules are in `governed/control.db` (SQLite): `rule`, `rule_tag`, `role_setting`, `role_osm_value`,
 `role_type_min`, `reference_mapping`, numbered immutable versions (`rule_set_version`) and the audit trail (`change_log`).
 A binary file does not diff in git, so every save and publish rewrites one text copy, `governed/control_dump.txt`; review that.
+Runs, releases and the ID registries are not here: they are in `data/state.db` (tables `run`, `run_stage`, `run_change`, `release`,
+`building_registry`, `site_registry`). An older `control.db` that still holds them is upgraded the first time it is opened: the rows are copied to
+`state.db` and the old tables are dropped.
 The rules began in an Excel workbook that was imported once; it is in git history (see the README).
 
 ## Runs, releases and archiving
@@ -121,7 +129,7 @@ Nothing is overwritten. Every layer keeps its history under an identifier.
 - **Silver.** Same bronze + rules + schema = same key = the cached build is reused. Change a rule or fetch new data and a fresh build is made; the old one stays.
 - **Gold.** Every run creates `data/gold/<area>/<run_id>/`. `CURRENT.json` points at the latest *successful* run; a failed run leaves no partial folder.
 - **Previous run.** The new run is compared with the run `CURRENT.json` pointed at when it started; differences (added, removed, reclassified, source changed) are stored in `run_change` and shown in `run_summary.xlsx`. If that folder was archived the run counts as a first run.
-- **Identity.** Building and Site IDs live in append-only registries in the control store, so they survive even if every gold folder is archived. IDs are never reused; absent buildings are *retired*, and a returning one gets its old ID.
+- **Identity.** Building and Site IDs live in append-only registries in `data/state.db`, so they survive even if every gold folder is archived. The file is not in git: back it up, because without it a new build mints fresh IDs. IDs are never reused; absent buildings are *retired*, and a returning one gets its old ID.
 
 **Run types:** `run --type dev|candidate` (default `dev`). `dev` is scratch work, first to be pruned; `candidate` may be released.
 
@@ -183,7 +191,7 @@ flowchart LR
     reg --> r
     bf --> r
     r --> id[gold: IDs and roles]
-    ov[(decisions + ID registries)] --> id
+    ov[(decisions in control.db,<br/>ID registries in state.db)] --> id
     id --> out[buildings / sites]
 ```
 

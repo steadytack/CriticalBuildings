@@ -50,7 +50,7 @@ reruns. They are also in the `override` section of `governed/control_dump.txt` f
 ## Releases
 
 - A **release** is an immutable, checksum-verified copy of one run in `data/published/<area>/<name>/`, named `vYYYY.MM.n`.
-- Releases are recorded in the control store; the run, bronze snapshots and silver build behind a release are protected
+- Releases are recorded in the run history (`data/state.db`, table `release`: who, when, why); the run, bronze snapshots and silver build behind a release are protected
   from archiving forever.
 - Before sharing outside the organisation: check the **OSM ODbL share-alike** point (below) and include `ATTRIBUTION.txt`.
 
@@ -95,7 +95,7 @@ Short records of why things are the way they are (Context, Decision, Consequence
 no review, no safe way to publish a version, and it corrupts easily. CSV files in git fix history and review, but give
 non-coders no validation or guard rails, and the requirement was a simple UI.
 
-**Decision.** Store rules, role settings, register mapping, human decisions, identity registries and the run registry in one
+**Decision.** Store rules, role settings, register mapping and human decisions in one
 SQLite file (`governed/control.db`), edited through a Streamlit UI. Rules have a **draft** and immutable **published
 versions**; every edit needs a user and a reason and is audited. The pipeline only reads published versions. Every save and
 publish also writes a deterministic text copy to `governed/control_dump.txt` so changes can be reviewed as ordinary git diffs.
@@ -104,7 +104,8 @@ All SQL lives in `control/store.py`.
 **Consequences.**
 - Good: history, versions, reproducibility ("which rules made this run?"), plain-English validation, a normalised model
   (a rule is stored once, with its tags).
-- Cost: SQLite is a binary file in git (mitigated by the dumps; commit the db when releasing) and has one writer at a time.
+- Cost: SQLite is a binary file in git (mitigated by the dumps) and has one writer at a time. Identity registries and run history were
+  first kept in the same file; see decision 0006 for why they were moved out.
   If several people must edit at once, repoint `store.py` at a shared database; nothing else touches SQL.
 - The UI does not authenticate; the audit user is self-declared.
 
@@ -136,19 +137,19 @@ the shapefiles straight from the zip (GDAL `zip://`), so bronze stays raw and th
 deleted and rebuilt. A GeoPackage column cannot be called `Geom` (the CSV keeps the WKT text; the GeoPackage holds the
 real geometry).
 
-### 0004. Stable IDs come from append-only registries in the control store
+### 0004. Stable IDs come from append-only registries
 
 **Context.** Downstream users link to `Building ID` and `Site ID`; IDs must survive refreshes. The first version kept IDs by
 reading the previous run's output file. Testing the new run folders showed that with no previous output every site got a
 new ID, which proved identity must not depend on an output file that can be missing or archived.
 
-**Decision.** Two registries in the control store. `building_registry` maps OS/OSM keys (and footprints) to a Building ID and
+**Decision.** Two registries in the operational state database (`data/state.db`, see decision 0006). `building_registry` maps OS/OSM keys (and footprints) to a Building ID and
 remembers the Site ID last assigned; `site_registry` records Site IDs. Rows are never deleted: absent items are *retired*, a
 returning item gets its old ID back, and numbers are never reused. A site keeps the ID most of its buildings had.
 
-**Consequences.** IDs are stable across runs, archives and fresh clones that carry `control.db`. The registry grows slowly.
-Anyone who runs the pipeline without the committed `control.db` would mint different IDs, so treat `control.db` as part of
-the product.
+**Consequences.** IDs are stable across runs and archives. The registry grows slowly. Anyone who runs the pipeline without the
+`state.db` that holds the registries would mint different IDs, so keep a backup of it and treat it as part of the product.
+Released files carry their IDs, so a release stays valid even if the registry is lost.
 
 ### 0005. DfE / CQC / NHS records verify and complete the map data instead of replacing it
 
@@ -164,3 +165,21 @@ postcode says which one is wrong.
 
 **Consequences.** Better coverage and a visible trust signal per site, at the cost of heuristics (all thresholds are in
 `settings.yml` and documented in the data dictionary). Registered-organisation closures are not building closures.
+
+### 0006. Run history and ID registries live in an operational state database, not the governed store
+
+**Context.** The runs, releases, per-stage counts and the Building and Site ID registries began in `governed/control.db`, next
+to the rules. Every build rewrote that committed binary file (the registries refresh every row they see), so the repository
+filled with "record fresh build" commits, two people building at once could not merge it, and a reviewer could not tell a rule
+change from a build.
+
+**Decision.** Split the store. `governed/control.db` keeps only what people decide and review: rules, versions, role settings,
+register mapping, overrides and the audit trail. `data/state.db` (git-ignored) keeps what the pipeline records: `run`, `run_stage`,
+`run_change`, `release`, `building_registry` and `site_registry`. Both are reached through `control/store.py`, which opens the
+second file itself, so callers did not change. An older `control.db` is upgraded on first open (rows copied, old tables dropped,
+file vacuumed). Releases are no longer also written to the governed audit trail; the `release` row records who, when and why.
+
+**Consequences.**
+- Good: a build no longer changes anything in git, and the committed rules store dropped from about 2 MB to under 200 KB.
+- Cost: the ID registries are no longer committed. Losing `data/state.db` restarts ID numbering for new builds, so back it up. A fresh
+  clone has no run history, and the end-to-end regression test needs a copy of `state.db` to reproduce the baseline's IDs.
