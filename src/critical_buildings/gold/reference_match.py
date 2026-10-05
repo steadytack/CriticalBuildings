@@ -10,10 +10,13 @@ Verification per site:  Verified | Unverified | Not covered
   Not covered   no reference dataset exists for this building type
 """
 
+import hashlib
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
+from pyogrio.raw import open_arrow
 from shapely.geometry import Point
 
 from critical_buildings import config, paths
@@ -85,6 +88,9 @@ class _Candidates:
         self.closed_geom = self.closed.geometry.to_numpy()
         self.valid = ref_valid
         self.valid_geom = ref_valid.geometry.to_numpy()
+        # spatial indexes: asking which records are within reach must not cost a pass over every record in the country
+        self.closed_tree = shapely.STRtree(self.closed_geom)
+        self.valid_tree = shapely.STRtree(self.valid_geom)
 
 
 def explain_unverified(site, ref_all, ref_valid, categories, candidates=None):
@@ -94,15 +100,15 @@ def explain_unverified(site, ref_all, ref_valid, categories, candidates=None):
     cand = candidates or _Candidates(ref_all, ref_valid)
     name = site["name"] if isinstance(site["name"], str) else ""
     if name and site.building_type in _c().school_types:
-        near = np.flatnonzero(shapely.distance(site.geometry, cand.closed_geom) <= _c().conflict_m)
+        near = np.sort(cand.closed_tree.query(site.geometry, predicate="dwithin", distance=_c().conflict_m))
         for k in near:                   # only the closed schools within reach, in register order
             r = cand.closed.iloc[k]
             if strict_similarity(r.ref_name, name) >= 0.9:
                 return "Closed per register", f"DfE GIAS lists '{r.ref_name}' (URN {r.ref_id}) as closed"
     best = None
-    dist = shapely.distance(site.geometry, cand.valid_geom)
-    for k in np.flatnonzero(~(dist > 300)):          # records within 300 m, in register order
-        r, d = cand.valid.iloc[k], dist[k]
+    within = np.sort(cand.valid_tree.query(site.geometry, predicate="dwithin", distance=300))      # records within 300 m, in register order
+    for k, d in zip(within, shapely.distance(site.geometry, cand.valid_geom[within]), strict=True):
+        r = cand.valid.iloc[k]
         nm = name_similarity(r.ref_name, name) if name else 0
         if (nm >= 0.3 or _compatible(r.building_type, site.building_type, categories)) \
                 and (best is None or nm - d / 1000 > best[0]):
@@ -114,22 +120,45 @@ def explain_unverified(site, ref_all, ref_valid, categories, candidates=None):
     return "Unverified", "No authoritative record found within 300 m"
 
 
-def building_footprints(boundary, area=paths.DEFAULT_AREA):
-    """OS Open Map Local Building polygons for the area (cached, used to give authoritative points a footprint)."""
+def _empty_footprints():
+    return gpd.GeoDataFrame({"ID": []}, geometry=[], crs=27700)
+
+
+def building_footprints(boundary, points, area=paths.DEFAULT_AREA, near=None):
+    """The OS Open Map Local Building polygons within `near` metres of any of `points`, in file order.
+
+    Only these are needed (to give register points a footprint), and a country has tens of millions of buildings, so each tile's
+    Building layer is streamed in batches and only the polygons near a point are kept: memory stays small whatever the area.
+    The result is cached under the points it was made for, so a rerun with the same register data does not read the tiles again."""
+    near = _c().snap_m if near is None else near
+    if not len(points):
+        return _empty_footprints()
+    coords = np.round(np.array([(p.x, p.y) for p in points]), 1)
+    name = "os_buildings_near_" + hashlib.sha256(coords.tobytes() + str(near).encode()).hexdigest()[:12] + ".gpkg"
     inputs = [("os_open_map_local", None), ("osm_overpass", "area_boundary.json")]     # the footprints and the boundary they are clipped to
-    cache = paths.conformed_lookup(area, "os_buildings.gpkg", inputs)
+    cache = paths.conformed_lookup(area, name, inputs)
     if cache is not None:
         return gpd.read_file(cache)
-    cache = paths.silver_conformed_dir(area) / "os_buildings.gpkg"
-    frames = []
+    zones = shapely.STRtree(shapely.buffer(np.asarray(points, dtype=object), near, quad_segs=16))     # quad_segs=16: what Geometry.buffer() uses
+    wanted = tuple(shapely.total_bounds(zones.geometries))
+    kept = []
     for f in paths.os_layer_paths("Building", tiles=sorted(config.load_area(area)["os_grid_squares"]), area=area):
-        g = gpd.read_file(f, columns=["ID"], bbox=tuple(boundary.bounds))
-        frames.append(g)
-    b = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs=27700)
-    b["geometry"] = b.geometry.force_2d()
-    b = b[b.geometry.representative_point().within(boundary)]
-    b.to_file(cache, driver="GPKG")
-    paths.conformed_stamp(area, "os_buildings.gpkg", inputs)
+        with open_arrow(f, columns=["ID"], bbox=wanted, batch_size=100_000, use_pyarrow=True) as (meta, reader):
+            geom_col = meta["geometry_name"] or "wkb_geometry"
+            for batch in reader:
+                frame = batch.to_pandas()
+                geoms = shapely.force_2d(shapely.from_wkb(frame[geom_col].to_numpy()))
+                hit = np.unique(zones.query(geoms, predicate="intersects")[0])
+                if len(hit):
+                    kept.append(gpd.GeoDataFrame({"ID": frame["ID"].to_numpy()[hit]}, geometry=geoms[hit], crs=27700))
+    if not kept:
+        return _empty_footprints()
+    b = gpd.GeoDataFrame(pd.concat(kept, ignore_index=True), crs=27700)
+    b = b[b.geometry.representative_point().within(boundary)].reset_index(drop=True)
+    if b.empty:
+        return _empty_footprints()
+    b.to_file(paths.silver_conformed_dir(area) / name, driver="GPKG")
+    paths.conformed_stamp(area, name, inputs)
     return b
 
 
@@ -259,7 +288,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     new_recs, new_sites = [], []
     next_group = int(sites.site_group.max()) + 1 if len(sites) else 1
     if len(gaps):
-        blds = building_footprints(boundary, area)
+        blds = building_footprints(boundary, list(gaps.geometry), area)
         bs = blds.sindex
         blds_geom = blds.geometry.to_numpy()
         os_name, os_type = orig_sites["name"].to_numpy(), orig_sites["building_type"].to_numpy()

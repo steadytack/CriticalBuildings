@@ -30,7 +30,10 @@ def check(area=paths.DEFAULT_AREA, store=None, rules_version=None):
         return problems + [str(e)]
     problems += rules.errors
     legacy = sources.legacy_unscoped_sources(area)
-    for source in ("osm_overpass", "os_open_map_local", "os_codepoint_open", "dfe_gias", "cqc_hsca", "nhs_ods"):
+    wanted = ["osm_overpass", "os_open_map_local", "os_codepoint_open", "dfe_gias", "cqc_hsca", "nhs_ods"]
+    if sources.uses_extract(area):
+        wanted.insert(1, "osm_extract")
+    for source in wanted:
         if source in legacy:
             problems.append(f"The '{source}' data is in the old shared folder. Move it to this area with: "
                             f"python -m critical_buildings migrate-bronze --area {area}")

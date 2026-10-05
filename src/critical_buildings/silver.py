@@ -15,10 +15,11 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
-from shapely.geometry import LineString, Point, Polygon
+import shapely
+from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import polygonize, unary_union
 
-from critical_buildings import config, paths, progress, source_checks
+from critical_buildings import config, osm_extract, paths, progress, source_checks
 from critical_buildings.control.rules import AREA_TAGS, content_hash
 
 # ====================================================================================================
@@ -71,7 +72,9 @@ def load_elements(path):
 def area_boundary(area=paths.DEFAULT_AREA):
     """Boundary polygon of the area (EPSG:27700), from the bronze OSM boundary snapshot."""
     g = load_elements(paths.bronze_file("osm_overpass", "area_boundary.json", area=area))
-    return unary_union(g.geometry.buffer(0).values)
+    boundary = unary_union(g.geometry.buffer(0).values)
+    shapely.prepare(boundary)          # a country's outline has 100,000+ vertices: prepared, 'is this point inside' is fast
+    return boundary
 
 
 # ====================================================================================================
@@ -105,7 +108,14 @@ def _row(source, sid, name, rule, refs, geom, note="", osm_building=""):
 
 def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
     osm_rules = [t for t in tags if t.source == "OSM"]
-    feats = load_elements(paths.bronze_file("osm_overpass", "osm_features.json", area=area))
+    osm_tags = sorted({(t.key, t.value) for t in osm_rules})
+    pbf = paths.bronze_file("osm_extract", "extract.osm.pbf", area=area) if config.load_area(area).get("osm_extract") else None
+    bbox = tuple(gpd.GeoSeries([box(*boundary.bounds)], crs=27700).to_crs(4326).total_bounds) if pbf and boundary is not None else None
+    if pbf:                                                    # an extract: stream the tagged features out of the PBF file
+        progress.step("Reading the tagged OpenStreetMap features from the extract")
+        feats = osm_extract.read_features(pbf, osm_tags, bbox)
+    else:
+        feats = load_elements(paths.bronze_file("osm_overpass", "osm_features.json", area=area))
     rows, areas, sites = [], [], []
     rules_by_key = {}
     for r in osm_rules:
@@ -129,7 +139,12 @@ def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
 
     # area-type features (port, military land, aerodrome): classify the buildings inside them
     own_ids = {r["source_id"] for r in rows}
-    blds = load_elements(paths.bronze_file("osm_overpass", "osm_area_buildings.json", area=area))
+    if pbf:
+        progress.step("Finding the buildings inside port, military and aerodrome areas")
+        blds = osm_extract.read_buildings_inside(pbf, osm_tags, [f.geometry for f, _, _ in areas
+                                                                if f.geometry.geom_type in ("Polygon", "MultiPolygon")], bbox)
+    else:
+        blds = load_elements(paths.bronze_file("osm_overpass", "osm_area_buildings.json", area=area))
     blds = blds[~blds.osm_id.isin(own_ids)]
     pts = blds.geometry.representative_point()
     inherited = {}

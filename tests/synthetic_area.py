@@ -27,14 +27,17 @@ BOUNDARY = box(599000, 239000, 602000, 242000)
 _TO_WGS84 = Transformer.from_crs(27700, 4326, always_xy=True)
 
 
-def area_config():
-    return {"name": "Testland", "description": "Synthetic area for tests.", "osm_boundary": {"ref_gss": "E00000000", "admin_level": 6},
-            "os_grid_squares": [TILE], "crs": 27700}
+def area_config(extract=False):
+    """extract=True makes the area read OpenStreetMap from an extract file instead of the Overpass JSON."""
+    cfg = {"name": "Testland", "description": "Synthetic area for tests.", "osm_boundary": {"ref_gss": "E00000000", "admin_level": 6},
+           "os_grid_squares": [TILE], "crs": 27700}
+    return {**cfg, "osm_extract": "test/testland"} if extract else cfg
 
 
 def _lonlat(x, y):
+    """WGS84 to 7 decimal places, the precision OpenStreetMap stores, so the Overpass JSON and the extract file agree exactly."""
     lon, lat = _TO_WGS84.transform(x, y)
-    return {"lat": lat, "lon": lon}
+    return {"lat": round(lat, 7), "lon": round(lon, 7)}
 
 
 def _ring(poly):
@@ -64,7 +67,7 @@ def _write_json(path, doc):
     path.write_text(json.dumps(doc), encoding="utf-8")
 
 
-def _overpass(dest):
+def _overpass(dest, boundary_only=False):
     boundary = {"type": "relation", "id": 1, "tags": {"name": "Testland"},
                 "members": [{"type": "way", "ref": 2, "role": "outer", "geometry": _ring(BOUNDARY)}]}
     features = [
@@ -73,9 +76,40 @@ def _overpass(dest):
         _node(12, *MUSIC, amenity="music_school", name="Testland Music Academy"),
     ]
     _write_json(dest / "area_boundary.json", {"elements": [boundary]})
+    if boundary_only:                                           # an area with an extract only asks Overpass for its boundary
+        return ["area_boundary.json"]
     _write_json(dest / "osm_features.json", {"elements": features})
     _write_json(dest / "osm_area_buildings.json", {"elements": [_way(20, box(601800, 241800, 601820, 241820), building="yes")]})
     return ["area_boundary.json", "osm_features.json", "osm_area_buildings.json"]
+
+
+def _extract(dest):
+    """The same three OSM features and the area building as OSM XML, which GDAL's OSM driver reads exactly like a PBF."""
+    nodes, ways = [], []
+
+    def node(x, y, tags=None):
+        i = len(nodes) + 1000
+        p = _lonlat(x, y)
+        inner = "".join(f'<tag k="{k}" v="{v}"/>' for k, v in (tags or {}).items())
+        nodes.append(f'<node id="{i}" lat="{p["lat"]}" lon="{p["lon"]}" version="1" timestamp="2026-01-01T00:00:00Z">{inner}</node>')
+        return i
+
+    def way(i, poly, **tags):
+        refs = [node(x, y) for x, y in list(poly.exterior.coords)[:-1]]
+        refs.append(refs[0])                                  # a closed way ends on the node it started from
+        inner = "".join(f'<nd ref="{r}"/>' for r in refs) + "".join(f'<tag k="{k}" v="{v}"/>' for k, v in tags.items())
+        ways.append(f'<way id="{i}" version="1" timestamp="2026-01-01T00:00:00Z">{inner}</way>')
+
+    # nodes must come in ascending id order, so the standalone node goes first
+    p = _lonlat(*MUSIC)
+    nodes.append(f'<node id="12" lat="{p["lat"]}" lon="{p["lon"]}" version="1" timestamp="2026-01-01T00:00:00Z">'
+                 '<tag k="amenity" v="music_school"/><tag k="name" v="Testland Music Academy"/></node>')
+    way(10, FIRE_OSM, amenity="fire_station", name="Testland Fire Station")
+    way(11, SCHOOL_OSM, school="primary", building="school", name="Oak Primary School")
+    way(20, box(601800, 241800, 601820, 241820), building="yes")
+    xml = '<?xml version="1.0" encoding="UTF-8"?><osm version="0.6" generator="synthetic">' + "".join(nodes + ways) + "</osm>"
+    (dest / "extract.osm.pbf").write_text(xml, encoding="utf-8")        # the file name the pipeline looks for
+    return ["extract.osm.pbf"]
 
 
 def _os_zip(dest, work):
@@ -174,10 +208,13 @@ def _snapshot(source, files_fn, work, area=None, snapshot="2026-01-01"):
     sources.set_latest(source, snapshot, area)
 
 
-def build_bronze(work):
-    """Write one snapshot of every source for the synthetic area into the (patched) bronze folder. `work` is scratch space."""
+def build_bronze(work, extract=False):
+    """Write one snapshot of every source for the synthetic area into the (patched) bronze folder. `work` is scratch space.
+    extract=True gives the area an OSM extract file (and only a boundary from Overpass) instead of the Overpass feature JSON."""
     work = Path(work)
-    _snapshot("osm_overpass", _overpass, work, AREA)
+    _snapshot("osm_overpass", lambda d: _overpass(d, boundary_only=extract), work, AREA)
+    if extract:
+        _snapshot("osm_extract", _extract, work, AREA)
     _snapshot("os_open_map_local", lambda d: _os_zip(d, work / "os"), work, AREA)
     _snapshot("os_codepoint_open", _codepoint, work)
     _snapshot("dfe_gias", _gias, work)

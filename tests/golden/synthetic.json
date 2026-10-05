@@ -72,7 +72,7 @@
     ],
     "file": "buildings.csv",
     "rows": 5,
-    "sha256": "6205f3a7cb92c70a77f9442a8b481ad2752ef698b1d64164d1f70c3ef22822b7"
+    "sha256": "736ee11139ed826643b869aa8f3a1a7ec8b7d819a67e202d560c46959824ee33"
   },
   "counts": {
     "by_building_role": {

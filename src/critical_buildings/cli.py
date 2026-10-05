@@ -195,7 +195,7 @@ def main(argv=None):
     c_ = add("check", cmd_check, "validate rules, settings and data")
     c_.add_argument("--rules-version", type=int, help="check this published rule set number instead of the latest")
     f = add("fetch", cmd_fetch, "download source data into new bronze snapshots")
-    f.add_argument("--only", help="comma-separated: osm,os,codepoint,dfe,cqc,nhs")
+    f.add_argument("--only", help="comma-separated: osm,osmx,os,codepoint,dfe,cqc,nhs (osmx = the Geofabrik extract, only for areas that set osm_extract)")
     f.add_argument("--dry-run", action="store_true", help="show what would be downloaded")
     add("migrate-bronze", cmd_migrate_bronze, "move old shared bronze folders of area-scoped sources to this area")
     r = add("run", cmd_run, "build the dataset into a new gold run folder")
