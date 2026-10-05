@@ -262,3 +262,39 @@ def test_a_conformed_table_is_reused_unless_its_own_sources_changed(isolated_pat
     assert reused is not None and reused.read_text() == "table" and reused.parent == paths.silver_conformed_dir("a")
     _fake_snapshot("cqc_hsca", "2026-02-01", "bbb")                      # the table's own source changes: must rebuild
     assert paths.conformed_lookup("a", "t.parquet", inputs) is None
+
+
+def test_one_failing_source_does_not_stop_the_others_and_the_cli_exits_1(monkeypatch, capsys, isolated_paths):
+    from critical_buildings import cli
+    fetched = []
+
+    def fake(name, fail=False):
+        def run(*a, **k):
+            fetched.append(name)
+            if fail:
+                raise sources.DownloadError(f"Could not download the {name} file: HTTP 503")
+            return {"status": "new", "snapshot": "2026-10-05"}
+        return run
+    monkeypatch.setattr(sources, "fetch_osm", fake("osm"))
+    monkeypatch.setattr(sources, "fetch_open_map_local", fake("os", fail=True))
+    monkeypatch.setattr(sources, "fetch_codepoint", fake("codepoint"))
+    rules = type("R", (), {"tags": []})()
+    res = sources.fetch_all(rules, "suffolk", only=["osm", "os", "codepoint"])
+    assert fetched == ["osm", "os", "codepoint"]                     # the failure in the middle did not stop the last one
+    assert res["os"] == {"status": "failed", "error": "Could not download the os file: HTTP 503"}
+    assert res["codepoint"]["status"] == "new"
+
+    class Store:
+        def ruleset(self, *a):
+            return type("R", (), {"require_valid": lambda self: self, "tags": []})()
+    monkeypatch.setattr("critical_buildings.control.store.ControlStore", Store)
+    assert cli.main(["fetch", "--only", "osm,os,codepoint"]) == 1
+    out = capsys.readouterr().out
+    assert "os: failed - Could not download the os file" in out and "1 of 3 source(s) could not be fetched: os" in out
+    assert cli.main(["fetch", "--only", "osm"]) == 0
+
+
+def test_an_unknown_source_name_is_refused_before_anything_is_fetched():
+    from critical_buildings.errors import PipelineError
+    with pytest.raises(PipelineError, match=r"Unknown source\(s\): dfa"):
+        sources.fetch_all(type("R", (), {"tags": []})(), "suffolk", only=["osm", "dfa"], dry_run=True)
