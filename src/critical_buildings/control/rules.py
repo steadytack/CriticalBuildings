@@ -6,6 +6,8 @@ import json
 import re
 from dataclasses import dataclass
 
+from critical_buildings.errors import ControlError
+
 # ====================================================================================================
 # Rule sets: tags, snapshots, content hash, version labels
 # ====================================================================================================
@@ -77,7 +79,7 @@ class RuleSet:
 
     def require_valid(self):
         if self.errors:
-            raise SystemExit("Rules check FAILED:\n  " + "\n  ".join(self.errors))
+            raise ControlError("Rules check FAILED:\n  " + "\n  ".join(self.errors))
         return self
 
 

@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import yaml
 
 from critical_buildings import paths
+from critical_buildings.errors import PipelineError
 
 SETTINGS_FILE = paths.SETTINGS
 NON_SECTIONS = ("areas", "sources")     # catalogue data, not tuning thresholds
@@ -23,7 +24,7 @@ NON_SECTIONS = ("areas", "sources")     # catalogue data, not tuning thresholds
 def load_area(name=paths.DEFAULT_AREA):
     areas = _raw()["areas"]
     if name not in areas:
-        raise SystemExit(f"Unknown area '{name}'. Known areas: {', '.join(sorted(areas))}")
+        raise PipelineError(f"Unknown area '{name}'. Known areas: {', '.join(sorted(areas))}")
     return {"area": name, **areas[name]}
 
 

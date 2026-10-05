@@ -8,6 +8,7 @@ import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from critical_buildings import config, sources
+from critical_buildings.errors import PipelineError
 from critical_buildings.gold import steps
 
 # ------------------------------------------------------------------ data quality score
@@ -133,7 +134,7 @@ def _check_complete(df, sites):
     missing = [c for c in list(df.columns) if c not in D]
     missing += [c for c in sites.columns if c != "geometry" and c not in D and c not in SITE_ONLY]
     if missing:
-        raise SystemExit("Data dictionary is missing descriptions for: " + ", ".join(sorted(set(missing))))
+        raise PipelineError("Data dictionary is missing descriptions for: " + ", ".join(sorted(set(missing))))
 
 
 def _source_dates():
