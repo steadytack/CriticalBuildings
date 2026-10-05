@@ -58,3 +58,20 @@ def test_ods_codes_are_read_with_their_trust_and_status(tmp_path, monkeypatch):
     assert ods["RXX02"]["status"] == "Closed"
     assert ods["A1"] == {"name": "High Street Surgery", "postcode": "CO1 1AA", "status": "Active",
                          "parent": "PCN1", "kind": "epraccur"}
+
+
+def test_silver_key_changes_with_the_silver_code_and_area_settings(monkeypatch):
+    from types import SimpleNamespace
+
+    from critical_buildings import config, silver
+    rules = SimpleNamespace(snapshot={"rules": []})
+    monkeypatch.setattr(silver.paths, "bronze_key", lambda area: "bronze")
+    base = silver.silver_key(rules, "suffolk")
+    assert silver.silver_key(rules, "suffolk") == base
+    monkeypatch.setattr(silver, "_code_fingerprint", lambda: "edited")
+    assert silver.silver_key(rules, "suffolk") != base
+    monkeypatch.undo()
+    monkeypatch.setattr(silver.paths, "bronze_key", lambda area: "bronze")
+    area = config.load_area("suffolk")
+    monkeypatch.setattr(config, "load_area", lambda name: {**area, "os_grid_squares": ["tl"]})
+    assert silver.silver_key(rules, "suffolk") != base
