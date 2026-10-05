@@ -7,6 +7,7 @@
 import datetime as dt
 import json
 import logging
+import os
 import shutil
 import sqlite3
 from dataclasses import dataclass
@@ -47,7 +48,9 @@ def current_run_id(area):
 
 def set_current(area, run_id):
     gold_dir(area).mkdir(parents=True, exist_ok=True)
-    (gold_dir(area) / "CURRENT.json").write_text(json.dumps({"run_id": run_id}, indent=2), encoding="utf-8")
+    tmp = gold_dir(area) / "CURRENT.json.tmp"
+    tmp.write_text(json.dumps({"run_id": run_id}, indent=2), encoding="utf-8")
+    os.replace(tmp, gold_dir(area) / "CURRENT.json")          # all or nothing: the pointer is never half-written
 
 
 def load_previous(area):
@@ -89,9 +92,8 @@ def finish(store, ctx, rules, silver_key, silver_reused, gold):
                                 config.settings_hash(), area_hash)
     lin["finished_at"] = now()
     lineage.write_lineage(ctx.dir, lin)
-    store.commit_identities(gold.identities, ctx.run_id)      # IDs are only minted by a run that succeeded
-    store.add_run_changes(ctx.run_id, gold.changes)
-    store.update_run(ctx.run_id, status="succeeded", finished_at=lin["finished_at"], silver_key=silver_key,
+    store.finish_run(ctx.run_id, gold.identities, gold.changes,       # IDs are only minted by a run that succeeded, atomically with its status
+                     status="succeeded", finished_at=lin["finished_at"], silver_key=silver_key,
                      buildings=lin["gold"]["buildings"], sites=lin["gold"]["sites"],
                      output_hash=lin["outputs"]["canonical_buildings_sha256"])
     set_current(ctx.area, ctx.run_id)
