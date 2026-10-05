@@ -3,6 +3,7 @@
 Slow (about a minute) and skipped when the bronze data or the control store is not present. Runs in a temp copy of
 the control store and writes to temp gold/silver folders, so it never touches the real registries or runs.
 """
+import json
 import shutil
 import subprocess
 import sys
@@ -44,8 +45,8 @@ def test_pipeline_reproduces_the_golden_baseline_with_and_without_silver_reuse(s
     assert second["silver_reused"] is True
     assert golden_utils.compare(second["dest"], BASELINE) == []
     assert second["previous_run_id"] == first["run_id"]
-    lin = (second["dest"] / "lineage.json").read_text()
-    assert '"changes_vs_previous": {}' in lin.replace("\n", "").replace("  ", " ") or "changes_vs_previous" in lin
+    lin = json.loads((second["dest"] / "lineage.json").read_text(encoding="utf-8"))
+    assert lin["gold"]["changes_vs_previous"] == {}      # same inputs and rules: nothing added, removed or reclassified
 
 
 def test_cli_check_passes_on_the_real_repository():
