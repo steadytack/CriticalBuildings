@@ -5,6 +5,7 @@ pipeline uses. Every edit needs a user and a reason and is written to change_log
 """
 import getpass
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -21,6 +22,8 @@ MIGRATIONS = [(1, "schema.sql"), (2, "migrations/002_runs.sql"), (3, "migrations
               (5, "migrations/005_drop_operational.sql")]     # (schema version, file); applied in order
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 STATE_SCHEMA = "state_schema.sql"
+STATE_BACKUPS_KEEP = 10                                  # unlabelled state backups kept (labelled, per-release ones are kept for good)
+STATE_LABELLED = re.compile(r"^state-\d{8}T\d{12}Z-.+\.db$")      # state-<timestamp>-<label>.db; the label may be a release name
 # Tables of the operational state database (data/state.db), parents before children. Everything else is governed.
 STATE_TABLES = ("building_registry", "site_registry", "run", "release", "run_change", "run_stage")
 
@@ -377,12 +380,24 @@ class ControlStore:
         see steps.assign_ids) in one transaction. Called only once the run has succeeded, so a failed run never
         mints IDs or retires buildings."""
         with self.state_conn() as c:
-            if "buildings" in pending:
-                self._save_building_registry(c, pending["buildings"], run_id)
-            if "sites" in pending:
-                self._save_site_registry(c, pending["sites"], run_id)
-            if "building_sites" in pending:
-                self._set_building_sites(c, pending["building_sites"])
+            self._commit_identities(c, pending, run_id)
+
+    def _commit_identities(self, c, pending, run_id):
+        if "buildings" in pending:
+            self._save_building_registry(c, pending["buildings"], run_id)
+        if "sites" in pending:
+            self._save_site_registry(c, pending["sites"], run_id)
+        if "building_sites" in pending:
+            self._set_building_sites(c, pending["building_sites"])
+
+    def finish_run(self, run_id, identities, changes_df, **run_fields):
+        """Everything that records a successful run, in ONE transaction: the new IDs, the changes against the previous run
+        and the run's own row (status, counts, hashes). Either all of it is stored or none, so a crash or error part-way
+        never leaves IDs minted for a run that is not marked succeeded."""
+        with self.state_conn() as c:
+            self._commit_identities(c, identities, run_id)
+            self._add_run_changes(c, run_id, changes_df)
+            self._update_run(c, run_id, **run_fields)
 
     # ------------------------------------------------------------ runs and releases
     def insert_run(self, row):
@@ -392,8 +407,12 @@ class ControlStore:
 
     def update_run(self, run_id, **fields):
         with self.state_conn() as c:
-            sets = ", ".join(f"{k} = ?" for k in fields)
-            c.execute(f"UPDATE run SET {sets} WHERE run_id = ?", (*fields.values(), run_id))
+            self._update_run(c, run_id, **fields)
+
+    @staticmethod
+    def _update_run(c, run_id, **fields):
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        c.execute(f"UPDATE run SET {sets} WHERE run_id = ?", (*fields.values(), run_id))
 
     def get_run(self, run_id):
         with self.state_conn() as c:
@@ -419,13 +438,17 @@ class ControlStore:
             return pd.read_sql_query(q, c, params=(area,) if area else ())
 
     def add_run_changes(self, run_id, changes_df):
+        with self.state_conn() as c:
+            self._add_run_changes(c, run_id, changes_df)
+
+    @staticmethod
+    def _add_run_changes(c, run_id, changes_df):
         if changes_df is None or changes_df.empty:
             return
-        with self.state_conn() as c:
-            c.executemany(
-                "INSERT INTO run_change (run_id, building_id, change, before_value, after_value, source_feature_id) VALUES (?,?,?,?,?,?)",
-                [(run_id, r["Building ID"], r["Change"], r["Before / Type"], r["After"], r["Source Feature ID"])
-                 for r in changes_df.to_dict("records")])
+        c.executemany(
+            "INSERT INTO run_change (run_id, building_id, change, before_value, after_value, source_feature_id) VALUES (?,?,?,?,?,?)",
+            [(run_id, r["Building ID"], r["Change"], r["Before / Type"], r["After"], r["Source Feature ID"])
+             for r in changes_df.to_dict("records")])
 
     def run_changes_df(self, run_id):
         with self.state_conn() as c:
@@ -440,3 +463,28 @@ class ControlStore:
     def releases_df(self):
         with self.state_conn() as c:
             return pd.read_sql_query("SELECT * FROM release ORDER BY released_at DESC", c)
+
+    # ------------------------------------------------------------ backup of the operational state
+    def backup_state(self, label="", dest_dir=None, keep=STATE_BACKUPS_KEEP):
+        """Copy the state database (runs, releases, ID registries; not in git) to a timestamped file and return its path.
+
+        Uses SQLite's online backup, so it is consistent even while something else has the file open. Backups with no
+        `label` (after each run, or by hand) are pruned to the newest `keep`; labelled ones (one per release) are kept
+        for good, because a release is what users link their own data to. Default folder: `backups/` next to the state
+        database (data/backups)."""
+        dest_dir = Path(dest_dir) if dest_dir else self.state_path.parent / "backups"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")        # microseconds: two backups never share a name
+        dest = dest_dir / (f"state-{stamp}-{label}.db" if label else f"state-{stamp}.db")
+        src = sqlite3.connect(self.state_path)
+        try:
+            out = sqlite3.connect(dest)
+            try:
+                src.backup(out)
+            finally:
+                out.close()
+        finally:
+            src.close()
+        for old in sorted(p for p in dest_dir.glob("state-*.db") if not STATE_LABELLED.search(p.name))[:-keep]:
+            old.unlink(missing_ok=True)
+        return dest

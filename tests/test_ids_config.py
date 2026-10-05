@@ -247,3 +247,20 @@ def test_library_errors_are_catchable_exceptions_not_system_exit(capsys, monkeyp
     monkeypatch.setattr(cli, "cmd_check", boom)
     assert cli.main(["check"]) == 1                                  # any PipelineError becomes a message and status 1
     assert "something the user can fix" in capsys.readouterr().out
+
+
+def test_finishing_a_run_is_all_or_nothing(store):
+    """If recording the run itself fails, the IDs it computed are not stored either (they used to be committed first)."""
+    import sqlite3
+
+    store.insert_run({"run_id": "R1", "area": "x", "run_type": "dev", "status": "running", "started_at": "t"})
+    registry = pd.DataFrame({"building_id": ["BLDG-000001"], "os_key": ["os1"], "osm_key": [None], "created": ["2026-01-01"],
+                             "wkt": ["POINT (1 2)"]})
+    pending = {"buildings": registry, "sites": {"SITE-000001": "2026-01-01"}, "building_sites": {"BLDG-000001": "SITE-000001"}}
+    with pytest.raises(sqlite3.IntegrityError):
+        store.finish_run("R1", pending, None, status="not-a-status")             # violates the run table's status check
+    assert store.building_registry_df().empty and store.site_registry_df().empty
+    assert store.get_run("R1")["status"] == "running"
+    store.finish_run("R1", pending, None, status="succeeded", buildings=1, sites=1)
+    assert list(store.building_registry_df().building_id) == ["BLDG-000001"]
+    assert store.get_run("R1")["status"] == "succeeded" and store.building_site_map() == {"BLDG-000001": "SITE-000001"}

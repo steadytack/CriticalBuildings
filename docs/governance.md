@@ -181,5 +181,5 @@ file vacuumed). Releases are no longer also written to the governed audit trail;
 
 **Consequences.**
 - Good: a build no longer changes anything in git, and the committed rules store dropped from about 2 MB to under 200 KB.
-- Cost: the ID registries are no longer committed. Losing `data/state.db` restarts ID numbering for new builds, so back it up. A fresh
+- Cost: the ID registries are no longer committed. Losing `data/state.db` restarts ID numbering for new builds, so every successful run and release copies it to `data/backups/` (the newest 10 run backups, plus one per release kept for good; `backup` does it on demand). The folder is on the same disk, so copy it elsewhere too. A fresh
   clone has no run history, and the end-to-end regression test needs a copy of `state.db` to reproduce the baseline's IDs.

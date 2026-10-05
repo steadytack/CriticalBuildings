@@ -6,7 +6,10 @@
 """
 import datetime as dt
 import json
+import logging
+import os
 import shutil
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +18,8 @@ import pandas as pd
 from critical_buildings import config, lineage, locks, paths
 from critical_buildings.control.store import ControlError, current_user, now
 from critical_buildings.publish import DELIVERABLES, find_output
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -43,7 +48,9 @@ def current_run_id(area):
 
 def set_current(area, run_id):
     gold_dir(area).mkdir(parents=True, exist_ok=True)
-    (gold_dir(area) / "CURRENT.json").write_text(json.dumps({"run_id": run_id}, indent=2), encoding="utf-8")
+    tmp = gold_dir(area) / "CURRENT.json.tmp"
+    tmp.write_text(json.dumps({"run_id": run_id}, indent=2), encoding="utf-8")
+    os.replace(tmp, gold_dir(area) / "CURRENT.json")          # all or nothing: the pointer is never half-written
 
 
 def load_previous(area):
@@ -85,13 +92,21 @@ def finish(store, ctx, rules, silver_key, silver_reused, gold):
                                 config.settings_hash(), area_hash)
     lin["finished_at"] = now()
     lineage.write_lineage(ctx.dir, lin)
-    store.commit_identities(gold.identities, ctx.run_id)      # IDs are only minted by a run that succeeded
-    store.add_run_changes(ctx.run_id, gold.changes)
-    store.update_run(ctx.run_id, status="succeeded", finished_at=lin["finished_at"], silver_key=silver_key,
+    store.finish_run(ctx.run_id, gold.identities, gold.changes,       # IDs are only minted by a run that succeeded, atomically with its status
+                     status="succeeded", finished_at=lin["finished_at"], silver_key=silver_key,
                      buildings=lin["gold"]["buildings"], sites=lin["gold"]["sites"],
                      output_hash=lin["outputs"]["canonical_buildings_sha256"])
     set_current(ctx.area, ctx.run_id)
+    _backup_state(store)                                      # the IDs this run minted are now only in state.db
     return lin
+
+
+def _backup_state(store, label=""):
+    """Copy the state database aside (see ControlStore.backup_state). A failed backup is reported, never fatal."""
+    try:
+        store.backup_state(label)
+    except (OSError, sqlite3.Error) as e:
+        log.warning("Could not back up the run history and ID registries (data/state.db): %s", e)
 
 
 def fail(store, ctx, exc):
@@ -141,6 +156,7 @@ def _release(store, area, name, run_id, notes, user):
         "release": name, "area": area, "run_id": run_id, "released_at": now(), "released_by": user or current_user(),
         "rule_version": lin["rules"]["label"], "notes": notes}, indent=2), encoding="utf-8")
     store.insert_release(name, area, run_id, user or current_user(), notes)
+    _backup_state(store, label=name)
     return dest
 
 

@@ -45,6 +45,8 @@ def test_release_copies_deliverables_verifies_them_and_records_it(isolated_paths
     rel = store.releases_df().iloc[0]
     assert rel.release == "v2026.10.0" and rel.run_id == "R1"
     assert store.get_run("R1")["run_type"] == "release"
+    backups = list((store.state_path.parent / "backups").glob("state-*-v2026.10.0.db"))
+    assert len(backups) == 1                                       # the ID registries are copied aside with every release
 
 
 def test_releases_are_immutable_and_names_cannot_be_reused(isolated_paths, store):
