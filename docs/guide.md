@@ -129,7 +129,7 @@ Nothing is overwritten. Every layer keeps its history under an identifier.
 - **Silver.** Same bronze + rules + schema = same key = the cached build is reused. Change a rule or fetch new data and a fresh build is made; the old one stays.
 - **Gold.** Every run creates `data/gold/<area>/<run_id>/`. `CURRENT.json` points at the latest *successful* run; a failed run leaves no partial folder.
 - **Previous run.** The new run is compared with the run `CURRENT.json` pointed at when it started; differences (added, removed, reclassified, source changed) are stored in `run_change` and shown in `run_summary.xlsx`. If that folder was archived the run counts as a first run.
-- **Identity.** Building and Site IDs live in append-only registries in `data/state.db`, so they survive even if every gold folder is archived. The file is not in git: back it up, because without it a new build mints fresh IDs. IDs are never reused; absent buildings are *retired*, and a returning one gets its old ID.
+- **Identity.** Building and Site IDs live in append-only registries in `data/state.db`, so they survive even if every gold folder is archived. The file is not in git, and without it a new build mints fresh IDs, so every successful run and every release copies it to `data/backups/` (newest 10 run backups, plus one per release kept for good; `backup` does it on demand). Keep that folder somewhere safe. IDs are never reused; absent buildings are *retired*, and a returning one gets its old ID.
 
 **Run types:** `run --type dev|candidate` (default `dev`). `dev` is scratch work, first to be pruned; `candidate` may be released.
 

@@ -5,6 +5,7 @@
     run                          build the dataset (silver -> gold -> publish)
     control dump|versions|publish    manage the rules store
     runs | release | archive | restore    run history, immutable releases, retention
+    backup                       copy the run history and ID registries (data/state.db) aside
     ui                           the rules editor in your browser
 """
 import argparse
@@ -143,6 +144,12 @@ def cmd_release(args):
     return 0
 
 
+def cmd_backup(args):
+    from critical_buildings.control.store import ControlStore
+    print("backed up ->", ControlStore().backup_state(args.label or ""))
+    return 0
+
+
 def cmd_control(args):
 
     from critical_buildings.control import dumps
@@ -203,6 +210,8 @@ def main(argv=None):
     rl.add_argument("name", nargs="?", help="e.g. v2026.10.0 (default: next in the month)")
     rl.add_argument("--run", help="run id (default: the latest successful run)")
     rl.add_argument("--notes")
+    b = add("backup", cmd_backup, "copy the run history and ID registries (data/state.db) to data/backups")
+    b.add_argument("--label", help="keep this backup for good (e.g. a release name); unlabelled ones are pruned to the newest 10")
     c = sub.add_parser("control", help="manage the rules store")
     c.add_argument("action", choices=["dump", "versions", "publish"])
     c.add_argument("--reason")

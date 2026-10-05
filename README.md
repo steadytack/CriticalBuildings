@@ -97,6 +97,9 @@ the editor. Decisions are saved against the building and survive reruns.
 **Share a version:** `python -m critical_buildings release v2026.10.0 --notes "Suffolk pilot"` copies the run into
 `data/published/suffolk/v2026.10.0/` (immutable, checksum-verified).
 
+**Back up the run history and IDs:** `data/state.db` is not in git. Every successful run and every release copies it to
+`data/backups/` automatically (the newest 10 run backups are kept, plus one per release, for good); `python -m critical_buildings backup` does it on demand. Copy that folder somewhere safe.
+
 **Tidy up old data:** `python -m critical_buildings archive` shows what could be archived (dry run);
 `archive --apply` does it; `restore` brings something back (the **Runs** tab does the same). Nothing a release depends on is ever touched. See [the run lifecycle](docs/guide.md#runs-releases-and-archiving).
 
@@ -140,6 +143,6 @@ UPRN counts and the DESNZ/BUUK columns are reserved but not populated. The full 
   PATH is being probed. Harmless; ignore them (or remove the stray GDAL entry from PATH / `GDAL_DRIVER_PATH`).
 - **Windows shows "fatal exception" lines in a test run:** harmless DLL-loading noise; tests disable that handler.
 - **The UI says nothing is published:** `governed/control.db` is missing or empty: restore it from a backup or from git history.
-- **IDs restarted from BLDG-000001, or the Runs tab is empty:** `data/state.db` is missing. It holds the ID registries and run history and is not in git, so keep a backup of it. Restore the file; a released dataset still carries its IDs.
+- **IDs restarted from BLDG-000001, or the Runs tab is empty:** `data/state.db` is missing. It holds the ID registries and run history and is not in git. Copy the newest file from `data/backups/` (or your own copy of that folder) back to `data/state.db`; a released dataset still carries its IDs.
 
 Contributing: [docs/guide.md](docs/guide.md#contributing).

@@ -5,6 +5,7 @@ pipeline uses. Every edit needs a user and a reason and is written to change_log
 """
 import getpass
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -20,6 +21,8 @@ MIGRATIONS = [(1, "schema.sql"), (2, "migrations/002_runs.sql"), (3, "migrations
               (5, "migrations/005_drop_operational.sql")]     # (schema version, file); applied in order
 SCHEMA_VERSION = MIGRATIONS[-1][0]
 STATE_SCHEMA = "state_schema.sql"
+STATE_BACKUPS_KEEP = 10                                  # unlabelled state backups kept (labelled, per-release ones are kept for good)
+STATE_LABELLED = re.compile(r"^state-\d{8}T\d{12}Z-.+\.db$")      # state-<timestamp>-<label>.db; the label may be a release name
 # Tables of the operational state database (data/state.db), parents before children. Everything else is governed.
 STATE_TABLES = ("building_registry", "site_registry", "run", "release", "run_change", "run_stage")
 
@@ -443,3 +446,28 @@ class ControlStore:
     def releases_df(self):
         with self.state_conn() as c:
             return pd.read_sql_query("SELECT * FROM release ORDER BY released_at DESC", c)
+
+    # ------------------------------------------------------------ backup of the operational state
+    def backup_state(self, label="", dest_dir=None, keep=STATE_BACKUPS_KEEP):
+        """Copy the state database (runs, releases, ID registries; not in git) to a timestamped file and return its path.
+
+        Uses SQLite's online backup, so it is consistent even while something else has the file open. Backups with no
+        `label` (after each run, or by hand) are pruned to the newest `keep`; labelled ones (one per release) are kept
+        for good, because a release is what users link their own data to. Default folder: `backups/` next to the state
+        database (data/backups)."""
+        dest_dir = Path(dest_dir) if dest_dir else self.state_path.parent / "backups"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")        # microseconds: two backups never share a name
+        dest = dest_dir / (f"state-{stamp}-{label}.db" if label else f"state-{stamp}.db")
+        src = sqlite3.connect(self.state_path)
+        try:
+            out = sqlite3.connect(dest)
+            try:
+                src.backup(out)
+            finally:
+                out.close()
+        finally:
+            src.close()
+        for old in sorted(p for p in dest_dir.glob("state-*.db") if not STATE_LABELLED.search(p.name))[:-keep]:
+            old.unlink(missing_ok=True)
+        return dest

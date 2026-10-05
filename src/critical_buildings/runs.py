@@ -6,7 +6,9 @@
 """
 import datetime as dt
 import json
+import logging
 import shutil
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +17,8 @@ import pandas as pd
 from critical_buildings import config, lineage, locks, paths
 from critical_buildings.control.store import ControlError, current_user, now
 from critical_buildings.publish import DELIVERABLES, find_output
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -91,7 +95,16 @@ def finish(store, ctx, rules, silver_key, silver_reused, gold):
                      buildings=lin["gold"]["buildings"], sites=lin["gold"]["sites"],
                      output_hash=lin["outputs"]["canonical_buildings_sha256"])
     set_current(ctx.area, ctx.run_id)
+    _backup_state(store)                                      # the IDs this run minted are now only in state.db
     return lin
+
+
+def _backup_state(store, label=""):
+    """Copy the state database aside (see ControlStore.backup_state). A failed backup is reported, never fatal."""
+    try:
+        store.backup_state(label)
+    except (OSError, sqlite3.Error) as e:
+        log.warning("Could not back up the run history and ID registries (data/state.db): %s", e)
 
 
 def fail(store, ctx, exc):
@@ -141,6 +154,7 @@ def _release(store, area, name, run_id, notes, user):
         "release": name, "area": area, "run_id": run_id, "released_at": now(), "released_by": user or current_user(),
         "rule_version": lin["rules"]["label"], "notes": notes}, indent=2), encoding="utf-8")
     store.insert_release(name, area, run_id, user or current_user(), notes)
+    _backup_state(store, label=name)
     return dest
 
 
