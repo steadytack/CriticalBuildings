@@ -383,12 +383,24 @@ class ControlStore:
         see steps.assign_ids) in one transaction. Called only once the run has succeeded, so a failed run never
         mints IDs or retires buildings."""
         with self.state_conn() as c:
-            if "buildings" in pending:
-                self._save_building_registry(c, pending["buildings"], run_id)
-            if "sites" in pending:
-                self._save_site_registry(c, pending["sites"], run_id)
-            if "building_sites" in pending:
-                self._set_building_sites(c, pending["building_sites"])
+            self._commit_identities(c, pending, run_id)
+
+    def _commit_identities(self, c, pending, run_id):
+        if "buildings" in pending:
+            self._save_building_registry(c, pending["buildings"], run_id)
+        if "sites" in pending:
+            self._save_site_registry(c, pending["sites"], run_id)
+        if "building_sites" in pending:
+            self._set_building_sites(c, pending["building_sites"])
+
+    def finish_run(self, run_id, identities, changes_df, **run_fields):
+        """Everything that records a successful run, in ONE transaction: the new IDs, the changes against the previous run
+        and the run's own row (status, counts, hashes). Either all of it is stored or none, so a crash or error part-way
+        never leaves IDs minted for a run that is not marked succeeded."""
+        with self.state_conn() as c:
+            self._commit_identities(c, identities, run_id)
+            self._add_run_changes(c, run_id, changes_df)
+            self._update_run(c, run_id, **run_fields)
 
     # ------------------------------------------------------------ runs and releases
     def insert_run(self, row):
@@ -398,8 +410,12 @@ class ControlStore:
 
     def update_run(self, run_id, **fields):
         with self.state_conn() as c:
-            sets = ", ".join(f"{k} = ?" for k in fields)
-            c.execute(f"UPDATE run SET {sets} WHERE run_id = ?", (*fields.values(), run_id))
+            self._update_run(c, run_id, **fields)
+
+    @staticmethod
+    def _update_run(c, run_id, **fields):
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        c.execute(f"UPDATE run SET {sets} WHERE run_id = ?", (*fields.values(), run_id))
 
     def get_run(self, run_id):
         with self.state_conn() as c:
@@ -425,13 +441,17 @@ class ControlStore:
             return pd.read_sql_query(q, c, params=(area,) if area else ())
 
     def add_run_changes(self, run_id, changes_df):
+        with self.state_conn() as c:
+            self._add_run_changes(c, run_id, changes_df)
+
+    @staticmethod
+    def _add_run_changes(c, run_id, changes_df):
         if changes_df is None or changes_df.empty:
             return
-        with self.state_conn() as c:
-            c.executemany(
-                "INSERT INTO run_change (run_id, building_id, change, before_value, after_value, source_feature_id) VALUES (?,?,?,?,?,?)",
-                [(run_id, r["Building ID"], r["Change"], r["Before / Type"], r["After"], r["Source Feature ID"])
-                 for r in changes_df.to_dict("records")])
+        c.executemany(
+            "INSERT INTO run_change (run_id, building_id, change, before_value, after_value, source_feature_id) VALUES (?,?,?,?,?,?)",
+            [(run_id, r["Building ID"], r["Change"], r["Before / Type"], r["After"], r["Source Feature ID"])
+             for r in changes_df.to_dict("records")])
 
     def run_changes_df(self, run_id):
         with self.state_conn() as c:
