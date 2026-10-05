@@ -27,6 +27,11 @@ def sandbox(tmp_path, monkeypatch):
         pytest.skip("real bronze data / control store / baseline not available")
     shutil.copytree(REPO / "governed", tmp_path / "governed")
     monkeypatch.setattr(paths, "CONTROL", tmp_path / "governed")
+    monkeypatch.setattr(paths, "DATA", tmp_path / "data")          # the state database, run logs and locks stay in the sandbox
+    real_state = REPO / "data" / "state.db"      # the ID registries the baseline's Building IDs depend on
+    if real_state.exists():
+        (tmp_path / "data").mkdir()
+        shutil.copy2(real_state, tmp_path / "data" / "state.db")
     monkeypatch.setattr(paths, "GOLD", tmp_path / "gold")
     monkeypatch.setattr(paths, "SILVER", tmp_path / "silver")
     # reuse the (slow-to-build, rule-independent) conformed tables so the test exercises classification, merging and

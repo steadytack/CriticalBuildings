@@ -49,7 +49,8 @@ def sidebar(s):
                     bump()
                 except ControlError as e:
                     st.error(str(e))
-    st.sidebar.caption(f"Store: {paths.CONTROL / 'control.db'}")
+    st.sidebar.caption(f"Rules: {paths.CONTROL / 'control.db'}")
+    st.sidebar.caption(f"Run history: {paths.DATA / 'state.db'}")
     return area
 
 

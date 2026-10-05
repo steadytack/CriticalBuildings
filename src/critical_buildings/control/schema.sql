@@ -1,6 +1,6 @@
 -- Control store schema, version 1.
 -- The governed store: business rules (draft + immutable published versions), audit trail, human decisions,
--- and the append-only identity registries. Edit through the UI / store layer, not by hand.
+-- (the identity registries and run tables it first held now live in state_schema.sql). Edit through the UI / store layer, not by hand.
 
 CREATE TABLE rule (
     rule_ref          INTEGER PRIMARY KEY,

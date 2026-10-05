@@ -1,20 +1,14 @@
 """Helpers shared by the UI tabs: the store handle, a refresh counter that resets form widgets, and the save form."""
 import streamlit as st
 
-from critical_buildings import paths
 from critical_buildings.control import dumps
 from critical_buildings.control.store import ControlError, ControlStore
 
 CATEGORIES_HINT = "e.g. Emergency, Care, Education, Transport, Government Buildings, Miscellaneous"
 
 
-@st.cache_resource
-def _store_path():
-    return str(paths.CONTROL / "control.db")
-
-
 def store():
-    return ControlStore(_store_path())
+    return ControlStore()
 
 
 def bump():
