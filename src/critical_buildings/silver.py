@@ -18,7 +18,7 @@ import pandas as pd
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import polygonize, unary_union
 
-from critical_buildings import config, paths, progress
+from critical_buildings import config, paths, progress, source_checks
 from critical_buildings.control.rules import AREA_TAGS, content_hash
 
 # ====================================================================================================
@@ -176,6 +176,7 @@ def load_os_sites(tags, boundary, area=paths.DEFAULT_AREA):
 
 def _read_layer(layer, boundary, area=paths.DEFAULT_AREA):
     g = pd.concat([gpd.read_file(f) for f in paths.os_layer_paths(layer, tiles=sorted(config.load_area(area)["os_grid_squares"]), area=area)], ignore_index=True)
+    source_checks.require_columns(g.columns, source_checks.OS_LAYER_FIELDS[layer], f"The OS Open Map Local {layer} layer")
     g = gpd.GeoDataFrame(g, geometry=gpd.GeoSeries(g.geometry, crs=27700).force_2d(), crs=27700)
     return g[g.geometry.representative_point().within(boundary)]
 
@@ -257,7 +258,9 @@ def _ods():
     """ODS lookups: code -> dict(name, postcode, status, parent, kind) from ets, epraccur and etr."""
     def columns(name, *positions):
         """The given columns of an ODS file as plain Python lists of strings ('' where empty): only these are parsed."""
-        df = pd.read_csv(paths.bronze_file("nhs_ods", name), header=None, dtype=str, usecols=list(positions)).fillna("")
+        path = paths.bronze_file("nhs_ods", name)
+        source_checks.check_ods_layout(name, pd.read_csv(path, header=None, dtype=str, nrows=500))      # the files have no header row
+        df = pd.read_csv(path, header=None, dtype=str, usecols=list(positions)).fillna("")
         return [df[p].tolist() for p in positions]
 
     code, trust_name = columns("etr.csv", 0, 1)
@@ -292,8 +295,10 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
     rows, dropped = [], {"unmapped": 0, "ignored": 0}
 
     # ---- DfE GIAS ----
-    g = pd.read_csv(paths.bronze_file("dfe_gias", "edubasealldata.csv"), encoding="cp1252", low_memory=False).dropna(
-        subset=["Easting", "Northing"])
+    g = pd.read_csv(paths.bronze_file("dfe_gias", "edubasealldata.csv"), encoding="cp1252", low_memory=False)
+    source_checks.require_columns(g.columns, source_checks.GIAS_COLUMNS, "The DfE GIAS file")
+    source_checks.check_mapping_fields(mapping, "DfE", g.columns, "the DfE GIAS file")
+    g = g.dropna(subset=["Easting", "Northing"])
     g = g[gpd.GeoSeries(gpd.points_from_xy(g.Easting, g.Northing), crs=27700, index=g.index).within(boundary)]
     for r, pt in zip(g.to_dict("records"), gpd.points_from_xy(g.Easting, g.Northing)):      # dicts and one point array: no per-row Series
         t = map_type("DfE", r, mapping)
@@ -314,6 +319,8 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
 
     # ---- CQC (HSCA active locations) ----
     c = _cqc_locations(area)
+    source_checks.require_columns(c.columns, source_checks.CQC_COLUMNS, "The CQC active locations sheet")
+    source_checks.check_mapping_fields(mapping, "CQC", c.columns, "the CQC active locations sheet")
     c = c.dropna(subset=["Location Latitude", "Location Longitude"])
     cg = gpd.GeoSeries(gpd.points_from_xy(c["Location Longitude"], c["Location Latitude"]), crs=4326,
                        index=c.index).to_crs(27700)
