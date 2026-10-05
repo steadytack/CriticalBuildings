@@ -12,6 +12,7 @@ With no run active every call is a cheap no-op (plain log line), so tests and li
 While a run is active, events are appended to data/logs/<run_id>.jsonl (the UI tails it live and shows it as a timeline
 afterwards; it survives a failed run, whose output folder is deleted) and each stage's status is stored in the run registry.
 """
+import contextlib
 import json
 import logging
 import time
@@ -35,10 +36,8 @@ def read_events(run_id):
         return []
     out = []
     for line in p.read_text(encoding="utf-8").splitlines():
-        try:
+        with contextlib.suppress(ValueError):          # a half-written last line while the run is still going
             out.append(json.loads(line))
-        except ValueError:
-            pass                     # a half-written last line while the run is still going
     return out
 
 

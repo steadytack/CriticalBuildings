@@ -48,7 +48,7 @@ def assign_roles(recs, settings):
     # every multi-building site needs at least one primary building
     primary_like = recs.role.isin(["Primary", "Standalone", "Whole site"])
     has_primary = primary_like.groupby(recs.site_group).transform("any")
-    for g, grp in recs[~has_primary & ~is_point].groupby("site_group"):
+    for _, grp in recs[~has_primary & ~is_point].groupby("site_group"):
         big = area[grp.index].idxmax()
         recs.at[big, "role"] = "Primary"
         recs.at[big, "role_reason"] = "Largest building at the site (none met the size or OSM-type test)"
