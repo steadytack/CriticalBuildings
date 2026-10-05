@@ -34,12 +34,12 @@ def canonical_hash(csv_path, key, drop=VOLATILE, columns=None):
     return hashlib.sha256(df.to_csv(index=False).encode("utf-8")).hexdigest(), df
 
 
-def describe(outputs_dir):
+def describe(outputs_dir, drop=VOLATILE):
     outputs_dir = Path(outputs_dir)
     out = {}
     for name, (fnames, key, columns) in FILES.items():
         path = first_existing(outputs_dir, fnames)
-        digest, df = canonical_hash(path, key, columns=columns)
+        digest, df = canonical_hash(path, key, drop=drop, columns=columns)
         out[name] = {"file": path.name, "rows": len(df), "columns": sorted(df.columns), "sha256": digest}
     b = pd.read_csv(first_existing(outputs_dir, FILES["buildings"][0]), dtype=str).fillna("")
     out["counts"] = {
@@ -51,10 +51,10 @@ def describe(outputs_dir):
     return out
 
 
-def compare(outputs_dir, baseline_path):
+def compare(outputs_dir, baseline_path, drop=VOLATILE):
     """Return a list of human-readable differences (empty list = identical)."""
     base = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
-    now = describe(outputs_dir)
+    now = describe(outputs_dir, drop)
     diffs = []
     for name in FILES:
         for field in ("rows", "columns", "sha256"):
