@@ -76,7 +76,7 @@ def tab_rules(s):
     show_messages(errors, warnings)
     if changed:
         st.info("**Your edits would change:**\n\n" + "\n".join(
-            f"- {l}" for l in logic.diff_snapshots(snap, proposed)) or "no effective change")
+            f"- {line}" for line in logic.diff_snapshots(snap, proposed)) or "no effective change")
 
     def save(user, reason):
         s.apply_table("rule", rules_rows, user, reason)
@@ -159,7 +159,7 @@ def tab_roles(s):
                            "primary": sorted(role["primary"]), "per_type": {k: float(v) for k, v in role["per_type"].items()}}
     show_messages(errors, [])
     if changed and not errors:
-        st.info("**Your edits would change:**\n\n" + "\n".join(f"- {l}" for l in logic.diff_snapshots(snap, logic.propose(snap, role=new_role))))
+        st.info("**Your edits would change:**\n\n" + "\n".join(f"- {line}" for line in logic.diff_snapshots(snap, logic.propose(snap, role=new_role))))
     save_form("Save to the draft", "save_role", changed and not errors,
               lambda u, r: s.set_role_settings(new_role["min_area"], new_role["ancillary"], new_role["primary"], new_role["per_type"], u, r))
 
