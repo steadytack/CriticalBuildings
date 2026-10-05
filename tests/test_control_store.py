@@ -222,3 +222,20 @@ def test_legacy_store_runs_and_registries_move_to_the_state_database(tmp_path):
     g.close()
     ControlStore(db)                                               # opening it again changes nothing
     assert s.get_run("R1")["area"] == "x"
+
+
+def test_state_backup_is_a_consistent_copy_and_old_unlabelled_ones_are_pruned(store, tmp_path):
+    import sqlite3
+    store.insert_run({"run_id": "R1", "area": "x", "run_type": "dev", "status": "succeeded", "started_at": "t"})
+    out = tmp_path / "backups"
+    first = store.backup_state(dest_dir=out)
+    c = sqlite3.connect(first)
+    assert c.execute("SELECT run_id FROM run").fetchall() == [("R1",)]
+    c.close()                                                       # an open handle would stop Windows deleting it
+    kept = store.backup_state("v2026.10.0", dest_dir=out)           # a release backup: kept for good
+    for _ in range(4):
+        store.backup_state(dest_dir=out, keep=2)
+    names = sorted(p.name for p in out.glob("state-*.db"))
+    assert kept.name in names and first.name not in names           # the first unlabelled one was pruned
+    assert len([n for n in names if n != kept.name]) == 2
+    assert store.backup_state().parent == store.state_path.parent / "backups"     # default folder sits next to the state file
