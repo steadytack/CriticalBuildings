@@ -15,6 +15,7 @@ import pandas as pd
 
 from critical_buildings import paths
 from critical_buildings.control import rules as rs
+from critical_buildings.errors import ControlError
 
 MIGRATIONS = [(1, "schema.sql"), (2, "migrations/002_runs.sql"), (3, "migrations/003_registry_site.sql"),
               (4, "migrations/004_run_stage.sql"),
@@ -54,10 +55,6 @@ def current_user():
         return getpass.getuser()
     except (OSError, KeyError, ImportError):      # no user name available (some services, containers)
         return "unknown"
-
-
-class ControlError(Exception):
-    pass
 
 
 class ControlStore:

@@ -13,7 +13,7 @@ import logging
 import sys
 
 from critical_buildings import paths
-from critical_buildings.locks import LockedError
+from critical_buildings.errors import PipelineError
 
 
 def _setup_logging(verbose=False):
@@ -222,7 +222,7 @@ def main(argv=None):
     _setup_logging(args.verbose)
     try:
         return args.fn(args)
-    except LockedError as e:
+    except PipelineError as e:             # unknown area, invalid rules, another operation running ...
         print(e)
         return 1
 

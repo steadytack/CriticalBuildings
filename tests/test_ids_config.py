@@ -5,6 +5,7 @@ import pytest
 from helpers import square
 
 from critical_buildings import config
+from critical_buildings.errors import PipelineError
 from critical_buildings.gold import steps
 
 
@@ -180,7 +181,7 @@ def test_settings_validate_cleanly_and_hash_is_stable():
 def test_area_files():
     area = config.load_area("suffolk")
     assert area["osm_boundary"]["ref_gss"] == "E10000029" and area["os_grid_squares"] == ["tl", "tm", "tg"]
-    with pytest.raises(SystemExit, match="Unknown area"):
+    with pytest.raises(PipelineError, match="Unknown area"):
         config.load_area("atlantis")
 
 
@@ -226,6 +227,26 @@ def test_editable_settings_lists_single_numbers_with_their_help_text():
     items = {(i["section"], i["key"]): i for i in config.editable_settings()}
     assert items[("merge", "point_distance_m")]["value"] == 25 and "same building" in items[("merge", "point_distance_m")]["help"]
     assert ("merge", "point_distance_by_type") not in items and ("matching", "loose_categories") not in items
+
+
+def test_library_errors_are_catchable_exceptions_not_system_exit(capsys, monkeypatch):
+    """Invalid rules and an unknown area raise PipelineError subclasses; the command line turns them into a message and status 1."""
+
+    from critical_buildings import cli
+    from critical_buildings.control.rules import RuleSet
+    from critical_buildings.errors import ControlError
+    bad = RuleSet(1, "v1", {}, [], {}, [], ["Rule 3 has no tags"], [])
+    with pytest.raises(ControlError, match="Rules check FAILED"):
+        bad.require_valid()
+    assert issubclass(ControlError, PipelineError)
+    assert cli.main(["check", "--area", "atlantis"]) == 1          # check names the unknown area
+    assert "Unknown area 'atlantis'" in capsys.readouterr().out
+
+    def boom(args):
+        raise PipelineError("something the user can fix")
+    monkeypatch.setattr(cli, "cmd_check", boom)
+    assert cli.main(["check"]) == 1                                  # any PipelineError becomes a message and status 1
+    assert "something the user can fix" in capsys.readouterr().out
 
 
 def test_finishing_a_run_is_all_or_nothing(store):

@@ -15,9 +15,10 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from critical_buildings import paths
+from critical_buildings.errors import PipelineError
 
 
-class LockedError(RuntimeError):
+class LockedError(PipelineError):
     """Another pipeline operation is already running."""
 
 

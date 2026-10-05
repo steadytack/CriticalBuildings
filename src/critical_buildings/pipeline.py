@@ -10,6 +10,7 @@ import logging
 from critical_buildings import config, locks, paths, progress, publish, runs, sources
 from critical_buildings import silver as silver_build
 from critical_buildings.control.store import ControlStore
+from critical_buildings.errors import PipelineError
 from critical_buildings.gold import steps as gold_steps
 
 log = logging.getLogger(__name__)
@@ -19,6 +20,10 @@ def check(area=paths.DEFAULT_AREA, store=None, rules_version=None):
     """Everything that must be right before a run. Returns a list of plain-English problems (empty = ready)."""
     store = store or ControlStore()
     problems = list(config.validate())
+    try:
+        config.load_area(area)
+    except PipelineError as e:                               # an unknown area: say so rather than list missing data
+        return problems + [str(e)]
     try:
         rules = store.ruleset(rules_version)
     except Exception as e:                                   # noqa: BLE001 - no published rule set yet
