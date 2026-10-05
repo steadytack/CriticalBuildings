@@ -51,7 +51,9 @@ def source_rows(area):
 
 @st.cache_data(show_spinner="Drawing the map ...")
 def qa_map_html(path, mtime, layer):
-    """The QA map for a run, drawn on demand from its GeoPackage (it is no longer stored with every run)."""
+    """The QA map for a run, drawn on demand from its GeoPackage (it is no longer stored with every run).
+
+    `mtime` is not used in the body: it is part of the cache key, so the map is redrawn when the file changes."""
     import tempfile
 
     import geopandas as gpd
@@ -64,6 +66,7 @@ def qa_map_html(path, mtime, layer):
 
 @st.cache_data(show_spinner=False)
 def read_table(path, mtime):
+    """A CSV as strings. `mtime` is part of the cache key only: the table is re-read when the file changes."""
     return pd.read_csv(path, dtype=str).fillna("")
 
 
