@@ -275,7 +275,9 @@ def assemble(recs, sites_df, rule_version, today, store):
     df.loc[has_reason, "Review Status"] = "Open"
     df.loc[has_reason & (df["Review Decision"] != ""), "Review Status"] = "Decided"
     df["Building Role"] = df["Building Role Override"].where(df["Building Role Override"] != "", df["Building Role Default"])
-    ev = lambda o, d: df[o].where(df[o] != "", df[d])
+    def ev(o, d):
+        return df[o].where(df[o] != "", df[d])
+
     df["Primary Category"] = ev("Primary Category Override", "Primary Category Default")
     df["Building Type"] = ev("Building Type Override", "Building Type Default")
     df["Operational Importance"] = ev("Operational Importance Override", "Operational Importance Default")

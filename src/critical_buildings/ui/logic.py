@@ -113,7 +113,9 @@ def diff_snapshots(old, new):
         for k, label in (("tag", "tag"), ("source", "source"), ("active", "active"), ("notes", "notes")):
             if to[i][k] != tn[i][k]:
                 lines.append(f"{_rule_label(rn, tn[i]['rule_ref'])}: tag {to[i]['tag'] or '(manual)'}: {label} {to[i][k]!r} -> {tn[i][k]!r}")
-    key = lambda m: (m["source"], m["field"], m["match"], m["value"], m["building_type"], m["active"])
+    def key(m):
+        return (m["source"], m["field"], m["match"], m["value"], m["building_type"], m["active"])
+
     so, sn = {key(m) for m in old["reference_mapping"]}, {key(m) for m in new["reference_mapping"]}
     for m in sorted(sn - so):
         lines.append(f"Reference mapping: added {m[0]} {m[1]} {m[2].lower()} '{m[3]}' -> {m[4]}" + ("" if m[5] else " (inactive)"))

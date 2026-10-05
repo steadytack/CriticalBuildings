@@ -22,19 +22,26 @@ def assign_roles(recs, settings):
         btag = r.osm_building if isinstance(r.osm_building, str) else ""
         minimum = settings["per_type"].get(r.building_type, settings["min_area"])
         if r.method == "OSM area (no buildings)":
-            role.append("Whole site"); reason.append("Record is the site area itself (no buildings found inside)")
+            role.append("Whole site")
+            reason.append("Record is the site area itself (no buildings found inside)")
         elif nb[i] == 1:
-            role.append("Standalone"); reason.append("Only building at this site")
+            role.append("Standalone")
+            reason.append("Only building at this site")
         elif is_point[i]:
-            role.append("Unknown"); reason.append("Point feature with no footprint")
+            role.append("Unknown")
+            reason.append("Point feature with no footprint")
         elif btag in settings["ancillary"]:
-            role.append("Ancillary"); reason.append(f"OSM building={btag}")
+            role.append("Ancillary")
+            reason.append(f"OSM building={btag}")
         elif btag in settings["primary"]:
-            role.append("Primary"); reason.append(f"OSM building={btag}")
+            role.append("Primary")
+            reason.append(f"OSM building={btag}")
         elif area[i] >= minimum:
-            role.append("Primary"); reason.append(f"Footprint {area[i]:.0f} m2 is at least {minimum:.0f} m2")
+            role.append("Primary")
+            reason.append(f"Footprint {area[i]:.0f} m2 is at least {minimum:.0f} m2")
         else:
-            role.append("Ancillary"); reason.append(f"Footprint {area[i]:.0f} m2 is under {minimum:.0f} m2")
+            role.append("Ancillary")
+            reason.append(f"Footprint {area[i]:.0f} m2 is under {minimum:.0f} m2")
     recs["role"] = role
     recs["role_reason"] = reason
 
