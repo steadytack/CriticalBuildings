@@ -13,7 +13,7 @@ Everything generated lives under `data/` (git-ignored). Human-governed inputs ar
 |---|---|---|---|---|
 | **Bronze** | `data/bronze/<source>/<date>/` | Raw downloads exactly as received, plus `_manifest.json` (URL, time, size, SHA-256, licence). `LATEST.json` says which snapshot runs use. | Never edited. New fetch = new folder. | No (it is the evidence) |
 | **Silver: conformed** | `data/silver/<area>/conformed/<key>/` | Cleaned tables that do not depend on the rules: CQC locations (parquet), OS building footprints (GeoPackage). `<key>` = hash of the bronze inputs; a table is copied forward from an earlier build when the sources it reads are unchanged (an OSM refresh does not re-read the CQC spreadsheet). | Rebuilt when its sources change. | Yes |
-| **Silver: classified** | `data/silver/<area>/classified/<key>/` | OSM and OS features with the rules applied, candidate sites, register records mapped to building types (GeoParquet). `<key>` = hash of bronze + rule version + silver schema. | Cached; same inputs reuse it. | Yes |
+| **Silver: classified** | `data/silver/<area>/classified/<key>/` | OSM and OS features with the rules applied, candidate sites, register records mapped to building types (GeoParquet). `<key>` = hash of bronze + rule version + area settings + silver code + silver schema. | Cached; same inputs reuse it. | Yes |
 | **Gold** | `data/gold/<area>/<run id>/` | One folder per run with every deliverable and `lineage.json`. `CURRENT.json` points at the latest successful run. | Never edited after the run. | Yes |
 | **Published** | `data/published/<area>/<release>/` | A checksum-verified copy of one run, kept permanently. | Immutable. | Yes |
 | **Archive** | `data/archive/` | Zipped older gold runs and bronze snapshots (with checksum sidecars). | Written by `archive`. | n/a |
@@ -119,7 +119,7 @@ Nothing is overwritten. Every layer keeps its history under an identifier.
 |---|---|---|
 | `run_id` | `20261001T145935_suffolk` | One execution of the pipeline. |
 | `bronze key` | `9db1914296f9` | Hash of the exact bronze files a run read. |
-| `silver key` | `1775330ea165` | Hash of bronze key + rule set + silver schema. |
+| `silver key` | `1775330ea165` | Hash of bronze key + rule set + area settings + silver code + silver schema. |
 | `release` | `v2026.10.0` | A named, immutable copy of one run. |
 | rule `version_id` | `3` (label `v3-a1b2c3`) | A published rule set. |
 

@@ -410,9 +410,19 @@ def build(rules, area=paths.DEFAULT_AREA):
 SILVER_SCHEMA = 1        # bump when the silver tables' meaning or shape changes, to invalidate cached builds
 
 
+def _code_fingerprint():
+    """Short hash of the source files that decide what a silver table contains, so editing them invalidates cached builds
+    (line endings are normalised so a Windows and a Linux checkout agree)."""
+    h = hashlib.sha256()
+    for f in (Path(__file__), Path(__file__).parent / "control" / "rules.py"):
+        h.update(f.read_bytes().replace(b"\r\n", b"\n"))
+    return h.hexdigest()[:12]
+
+
 def silver_key(rules, area=paths.DEFAULT_AREA):
-    """Same bronze inputs + same rule set + same area (+ same silver schema) = same silver build."""
-    raw = f"{SILVER_SCHEMA}|{area}|{paths.bronze_key(area)}|{content_hash(rules.snapshot)}"
+    """Same bronze inputs + rule set + area settings + silver code (+ same silver schema) = same silver build."""
+    area_cfg = hashlib.sha256(json.dumps(config.load_area(area), sort_keys=True, default=str).encode()).hexdigest()[:12]
+    raw = f"{SILVER_SCHEMA}|{_code_fingerprint()}|{area}|{area_cfg}|{paths.bronze_key(area)}|{content_hash(rules.snapshot)}"
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 
@@ -450,7 +460,7 @@ def build_or_load(rules, area=paths.DEFAULT_AREA, reuse=True):
     key = silver_key(rules, area)
     d = classified_dir(area, key)
     if reuse and (d / "_meta.json").exists():
-        progress.step(f"Reusing the cached silver build {key} (same sources, rules and settings as before)")
+        progress.step(f"Reusing the cached silver build {key} (same sources, rules, area settings and code as before)")
         progress.note("silver cache", "reused")
         progress.note("silver key", key)
         return load(d, area), key, True
