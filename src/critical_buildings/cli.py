@@ -39,7 +39,13 @@ def cmd_fetch(args):
     only = args.only.split(",") if args.only else None
     results = sources.fetch_all(rules, args.area, only, args.dry_run)
     for name, res in results.items():
-        print(f"{name}: {res['status']}" + (f" ({res['snapshot']})" if "snapshot" in res else ""))
+        print(f"{name}: {res['status']}" + (f" ({res['snapshot']})" if "snapshot" in res else "")
+              + (f" - {res['error']}" if "error" in res else ""))
+    failed = [n for n, res in results.items() if res["status"] == "failed"]
+    if failed:
+        print(f"{len(failed)} of {len(results)} source(s) could not be fetched: {', '.join(failed)}. "
+              "The others were stored; fix the cause and run fetch again with --only for these.")
+        return 1
     return 0
 
 

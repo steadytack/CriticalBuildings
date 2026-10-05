@@ -20,6 +20,7 @@ import requests
 
 from critical_buildings import config, locks, paths
 from critical_buildings.control.rules import AREA_TAGS
+from critical_buildings.errors import PipelineError
 
 log = logging.getLogger(__name__)
 
@@ -126,6 +127,10 @@ def migrate_area_scoped_bronze(area):
 HEADERS = {"User-Agent": "critical-buildings-pipeline/0.1"}
 
 
+class DownloadError(PipelineError, RuntimeError):
+    """A source could not be fetched (the server failed, the file was not what we asked for, or its link was not found)."""
+
+
 class BadDownload(ValueError):
     """A download that arrived (HTTP 200) but is not the data we asked for."""
 
@@ -168,6 +173,7 @@ def http_download(url, dest, retries=3, post_data=None, timeout=400, validate=No
     """Stream a URL (or POST an Overpass query) to dest, retrying on server errors and on downloads that fail
     `validate(dest)` (which raises BadDownload). Client errors such as 404 fail at once: retrying cannot help."""
     for attempt in range(retries + 1):
+        r = None
         try:
             if post_data is None:
                 r = requests.get(url, stream=True, timeout=timeout, headers=HEADERS)
@@ -192,9 +198,12 @@ def http_download(url, dest, retries=3, post_data=None, timeout=400, validate=No
         except requests.RequestException as e:
             log.warning("%s -> %s (attempt %s)", url, e, attempt + 1)
             last_problem = str(e)
+        finally:
+            if r is not None:
+                r.close()                                  # give the connection back, whatever happened
         if attempt < retries:
             time.sleep(15 * (attempt + 1))
-    raise RuntimeError(f"Could not download {url}: {last_problem}")
+    raise DownloadError(f"Could not download {url}: {last_problem}")
 
 
 def _unique_snapshot_dir(source_dir, today):
@@ -317,21 +326,26 @@ def fetch_dfe(dry_run=False, today=None):
         url = cat["url"].format(yyyymmdd=(today - dt.timedelta(days=back)).strftime("%Y%m%d"))
         if dry_run or _reachable(url):
             return snapshot("dfe_gias", [{"name": "edubasealldata.csv", "url": url}], dry_run=dry_run)
-    raise RuntimeError("No GIAS file found for the last 4 days")
+    raise DownloadError("No GIAS file found for the last 4 days")
 
 
 def resolve_cqc_url(page_html, base="https://www.cqc.org.uk", pattern=r"HSCA_Active_Locations\.ods"):
     """The CQC file link changes every month: find it on the 'using CQC data' page."""
     m = re.search(rf'href="([^"]*{pattern})"', page_html)
     if not m:
-        raise RuntimeError("Could not find the CQC HSCA active locations link on the CQC page")
+        raise DownloadError("Could not find the CQC HSCA active locations link on the CQC page")
     link = m.group(1)
     return link if link.startswith("http") else base + link
 
 
 def fetch_cqc(dry_run=False):
     cat = load_sources()["cqc_hsca"]
-    html = requests.get(cat["page"], timeout=60, headers=HEADERS).text
+    try:
+        page = requests.get(cat["page"], timeout=60, headers=HEADERS)
+        page.raise_for_status()
+    except requests.RequestException as e:
+        raise DownloadError(f"Could not read the CQC data page {cat['page']}: {e}") from e
+    html = page.text
     url = resolve_cqc_url(html, pattern=cat["link_pattern"])
     return snapshot("cqc_hsca", [{"name": "active_locations.ods", "url": url}], dry_run=dry_run)
 
@@ -350,7 +364,9 @@ ALL = ("osm", "os", "codepoint", "dfe", "cqc", "nhs")
 
 
 def fetch_all(rules, area="suffolk", only=None, dry_run=False):
-    """Fetch every source (or the named subset). Returns {source: result}. Never overwrites existing snapshots."""
+    """Fetch every source (or the named subset). Returns {source: result}. Never overwrites existing snapshots.
+
+    A source that cannot be fetched is reported as {"status": "failed", "error": ...} and the rest are still fetched."""
     jobs = {
         "osm": lambda: fetch_osm(rules, area, dry_run),
         "os": lambda: fetch_open_map_local(area, dry_run),
@@ -359,9 +375,16 @@ def fetch_all(rules, area="suffolk", only=None, dry_run=False):
         "cqc": lambda: fetch_cqc(dry_run),
         "nhs": lambda: fetch_nhs(dry_run),
     }
+    unknown = [n for n in (only or ()) if n not in jobs]
+    if unknown:
+        raise PipelineError(f"Unknown source(s): {', '.join(unknown)}. Choose from: {', '.join(ALL)}.")
     out = {}
     with nullcontext() if dry_run else locks.pipeline_lock("fetch"):
         for name in (only or ALL):
             log.info("== fetching %s", name)
-            out[name] = jobs[name]()
+            try:
+                out[name] = jobs[name]()
+            except PipelineError as e:           # one source being down must not stop the others from being fetched
+                log.warning("%s failed: %s", name, e)
+                out[name] = {"status": "failed", "error": str(e)}
     return out
