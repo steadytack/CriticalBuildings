@@ -134,7 +134,10 @@ def building_footprints(boundary, area=paths.DEFAULT_AREA):
 
 
 def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, area=paths.DEFAULT_AREA):
-    """Returns (recs, sites, gaps) with authoritative attributes on recs and new records for unmatched references."""
+    """Match the register records to the sites and return (recs, sites, gaps, matches).
+
+    recs and sites carry the authoritative attributes (plus new records for register entries that matched no site);
+    gaps are the register records that became new buildings; matches is the table of accepted (record, site) pairs."""
     categories = {t.building_type: t.category for t in tags}
     site_names = dict(zip(sites.site_group, sites.name))
     m = match_reference(ref, sites, site_names, categories)
@@ -229,7 +232,9 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
         if len(dfe_types) != 1 or site_row.empty:
             continue
         new_type, old_type = next(iter(dfe_types)), site_row.building_type.iloc[0]
-        if new_type == old_type or new_type not in rule_for or categories.get(new_type) not in config.get().matching.loose_categories                 or categories.get(old_type) != categories.get(new_type):
+        loose = config.get().matching.loose_categories
+        if (new_type == old_type or new_type not in rule_for or categories.get(new_type) not in loose
+                or categories.get(old_type) != categories.get(new_type)):
             continue
         if rule_for[new_type].priority > rule_for.get(old_type, rule_for[new_type]).priority:
             continue          # DfE only says 'School' (e.g. independent schools): keep the more specific OS/OSM type
