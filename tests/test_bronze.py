@@ -4,6 +4,7 @@ import functools
 import http.server
 import json
 import threading
+import zipfile
 
 import pytest
 
@@ -160,9 +161,16 @@ def test_os_layers_are_read_straight_from_the_zips(isolated_paths):
     snap = paths.bronze_source_dir("os_open_map_local", "suffolk") / "2026-10-01"
     snap.mkdir(parents=True)
     sources.set_latest("os_open_map_local", "2026-10-01", "suffolk")
+    for tile, layers in (("tl", ("ImportantBuilding", "RailwayStation")), ("tm", ("ImportantBuilding",))):     # tm has no railway station
+        with zipfile.ZipFile(snap / f"opmplc_essh_{tile}.zip", "w") as z:
+            for layer in layers:
+                z.writestr(f"OS OpenMap Local (ESRI Shape File) {tile.upper()}/data/{tile.upper()}_{layer}.shp", b"")
     got = paths.os_layer_paths("ImportantBuilding", tiles=("tl", "tm"), area="suffolk")
     assert got[0].startswith("zip://") and got[0].endswith("!OS OpenMap Local (ESRI Shape File) TL/data/TL_ImportantBuilding.shp")
     assert got[1].endswith("TM/data/TM_ImportantBuilding.shp") and len(got) == 2
+    only_tl = paths.os_layer_paths("RailwayStation", tiles=("tl", "tm"), area="suffolk")        # a tile without the layer is skipped
+    assert len(only_tl) == 1 and only_tl[0].endswith("TL/data/TL_RailwayStation.shp")
+    assert paths.os_layer_paths("Building", tiles=("tl", "tm"), area="suffolk") == []
 
 
 def test_the_cqc_link_is_found_on_the_page():
