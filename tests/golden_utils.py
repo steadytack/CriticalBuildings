@@ -40,7 +40,9 @@ def describe(outputs_dir, drop=VOLATILE):
     for name, (fnames, key, columns) in FILES.items():
         path = first_existing(outputs_dir, fnames)
         digest, df = canonical_hash(path, key, drop=drop, columns=columns)
-        out[name] = {"file": path.name, "rows": len(df), "columns": sorted(df.columns), "sha256": digest}
+        out[name] = {"file": path.name, "rows": len(df), "columns": sorted(df.columns), "sha256": digest,
+                     # one hash per column, so a mismatch says which columns changed rather than just 'the hash differs'
+                     "column_sha256": {c: hashlib.sha256("\n".join(df[c]).encode("utf-8")).hexdigest()[:12] for c in df.columns}}
     b = pd.read_csv(first_existing(outputs_dir, FILES["buildings"][0]), dtype=str).fillna("")
     out["counts"] = {
         "by_source": b["Source"].value_counts().sort_index().to_dict(),
@@ -61,6 +63,9 @@ def compare(outputs_dir, baseline_path, drop=VOLATILE):
             if base[name][field] != now[name][field]:
                 what = "" if field == "sha256" else f" (baseline {base[name][field]} vs now {now[name][field]})"
                 diffs.append(f"{name}: {field} differs{what if field != 'columns' else ''}")
+        if base[name]["sha256"] != now[name]["sha256"] and "column_sha256" in base[name]:
+            changed = [c for c, h in now[name]["column_sha256"].items() if base[name]["column_sha256"].get(c) != h]
+            diffs.append(f"{name}: columns that differ: {', '.join(changed)}")
     if base["counts"] != now["counts"]:
         diffs.append("summary counts differ")
     return diffs
