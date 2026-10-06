@@ -55,11 +55,10 @@ def test_the_filter_and_config_are_built_from_the_rule_tags():
 def test_features_come_back_as_osm_id_tags_geometry(extract):
     f = osm_extract.read_features(extract, TAGS)
     by_id = {r.osm_id: r for r in f.itertuples()}
-    assert set(by_id) == {"node/1", "node/2", "way/100", "way/103"}              # the huts have no active tag, so they are not read
+    assert set(by_id) == {"node/1", "node/2", "way/100"}      # the huts have no active tag; the open way is not read (see LAYERS)
     assert by_id["node/1"].tags == {"amenity": "fire_station", "name": "Station A"}
     assert by_id["node/2"].tags == {"telecom:data_center": "yes"}                # picked out of other_tags
     assert by_id["way/100"].geometry.geom_type in ("Polygon", "MultiPolygon")    # a closed way is an area
-    assert by_id["way/103"].geometry.geom_type == "Point"                        # an open way is its centroid, as on the Overpass route
     assert f.crs.to_epsg() == 27700 and 0 < by_id["node/1"].geometry.x < 700_000
 
 

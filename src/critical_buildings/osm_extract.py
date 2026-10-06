@@ -9,20 +9,26 @@ the same way the Overpass query is built from the active rule tags.
 """
 import re
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+import pyarrow as pa
 import shapely
 from pyogrio import read_dataframe
 from pyogrio.raw import open_arrow
 
+from critical_buildings import progress
 from critical_buildings.control.rules import AREA_TAGS
 
 COLUMN_KEY = re.compile(r"^[a-z_]+$")            # keys that can be a plain column; keys like plant:output:hot_water stay in other_tags
 ALWAYS = ("name", "building")                    # read for every feature: the name is shown, the building tag drives roles
 HSTORE = re.compile(r'"((?:[^"\\]|\\.)*)"=>"((?:[^"\\]|\\.)*)"')
-LAYERS = ("points", "lines", "multipolygons")    # nodes, open ways (taken as their centroid), closed ways and relations (areas)
+# nodes, then closed ways and relations (areas). Open ways (GDAL's 'lines' layer) are left out: every pass over a country's file
+# takes minutes and England has 3 features of that kind, which are mapping mistakes (an area tagged on a way that is not closed).
+LAYERS = ("points", "multipolygons")
 
 
 def osm_keys(osm_tags):
@@ -116,8 +122,11 @@ def read_features(pbf, osm_tags, bbox=None):
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
         opts = _open_options(osm_tags, tmp)
-        for layer in LAYERS:
-            df = read_dataframe(pbf, layer=layer, where=where, bbox=bbox, **opts)
+        progress.step("Reading the points and areas of the OpenStreetMap extract (one pass over the file for each, in parallel)")
+        with ThreadPoolExecutor(max_workers=len(LAYERS)) as pool:          # each layer is its own pass over the whole file
+            frames = list(pool.map(lambda layer: read_dataframe(pbf, layer=layer, where=where, bbox=bbox, **opts), LAYERS))
+        for layer, df in zip(LAYERS, frames, strict=True):
+            progress.note(f"OSM {layer} read", len(df))
             rows += _to_rows(df, layer, osm_tags)
     return gpd.GeoDataFrame(rows, columns=["osm_id", "tags", "geometry"], geometry="geometry", crs=4326).to_crs(27700)
 
@@ -128,7 +137,9 @@ def read_buildings_inside(pbf, osm_tags, areas, bbox=None, batch_size=100_000):
     15 million buildings never sit in memory together."""
     if not len(areas):
         return gpd.GeoDataFrame(columns=["osm_id", "tags", "geometry"], geometry="geometry", crs=27700)
-    tree = shapely.STRtree(list(areas))
+    # The test is made in lon/lat, as the file stores it: reprojecting 15 million buildings to British National Grid just to ask
+    # 'is it inside one of a few thousand areas' was the slow part. Only the buildings that are inside are reprojected.
+    tree = shapely.STRtree(gpd.GeoSeries(list(areas), crs=27700).to_crs(4326).to_numpy())
     kept = []
     with tempfile.TemporaryDirectory() as tmp:
         opts = _open_options(osm_tags, tmp)
@@ -136,13 +147,11 @@ def read_buildings_inside(pbf, osm_tags, areas, bbox=None, batch_size=100_000):
                         use_pyarrow=True, **opts) as (meta, reader):
             geom_col = meta["geometry_name"] or "wkb_geometry"
             for batch in reader:
-                frame = batch.to_pandas()
-                geoms = gpd.GeoSeries(shapely.from_wkb(frame[geom_col].to_numpy()), crs=4326).to_crs(27700)
-                points = geoms.representative_point().to_numpy()
-                hit = tree.query(points, predicate="within")[0]
+                geoms = shapely.from_wkb(batch.column(geom_col).to_numpy(zero_copy_only=False))
+                hit = np.unique(tree.query(shapely.point_on_surface(geoms), predicate="within")[0])
                 if len(hit):
-                    sub = frame.iloc[sorted(set(hit))].copy()
-                    sub["geometry"] = geoms.iloc[sorted(set(hit))].to_numpy()
+                    sub = batch.take(pa.array(hit)).to_pandas()
+                    sub["geometry"] = gpd.GeoSeries(geoms[hit], crs=4326).to_crs(27700).to_numpy()
                     kept.append(sub)
     if not kept:
         return gpd.GeoDataFrame(columns=["osm_id", "tags", "geometry"], geometry="geometry", crs=27700)
