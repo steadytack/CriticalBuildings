@@ -207,6 +207,9 @@ def _read_layer(layer, boundary, area=paths.DEFAULT_AREA):
         return gpd.GeoDataFrame({c: [] for c in source_checks.OS_LAYER_FIELDS[layer]}, geometry=[], crs=27700)
     g = pd.concat([gpd.read_file(f) for f in files], ignore_index=True)
     source_checks.require_columns(g.columns, source_checks.OS_LAYER_FIELDS[layer], f"The OS Open Map Local {layer} layer")
+    # A feature that crosses the edge of two 100 km tiles is in both tiles' files under the same ID: keep it once (in England,
+    # 87 buildings and 127 site outlines were counted twice).
+    g = g.drop_duplicates(subset="ID", keep="first")
     g = gpd.GeoDataFrame(g, geometry=gpd.GeoSeries(g.geometry, crs=27700).force_2d(), crs=27700)
     return g[g.geometry.representative_point().within(boundary)]
 

@@ -89,3 +89,14 @@ def test_invalid_polygons_are_repaired_so_that_intersections_do_not_fail():
     assert fixed.geometry.iloc[1].equals(box(0, 0, 5, 5)) and fixed.geometry.iloc[2].equals(Point(1, 1))
     assert fixed.geometry.iloc[0].intersection(box(0, 0, 5, 5)).area > 0      # no TopologyException any more
     assert not gdf.geometry.iloc[0].is_valid                                  # the input frame is not modified
+
+
+def test_a_feature_in_two_overlapping_os_tiles_is_read_once(tmp_path, monkeypatch):
+    import geopandas as gpd
+    from shapely.geometry import box
+    for tile, rows in (("tl", [("a", box(0, 0, 1, 1)), ("edge", box(9, 0, 10, 1))]), ("tm", [("edge", box(9, 0, 10, 1)), ("b", box(20, 0, 21, 1))])):
+        gpd.GeoDataFrame({"ID": [r[0] for r in rows], "DISTNAME": ["", ""], "SITETHEME": ["", ""], "CLASSIFICA": ["", ""]},
+                         geometry=[r[1] for r in rows], crs=27700).to_file(tmp_path / f"{tile}.shp")
+    monkeypatch.setattr(paths, "os_layer_paths", lambda layer, tiles, area: [str(tmp_path / "tl.shp"), str(tmp_path / "tm.shp")])
+    got = silver._read_layer("FunctionalSite", box(-5, -5, 50, 50), "suffolk")
+    assert sorted(got.ID) == ["a", "b", "edge"]                       # 'edge' is in both tiles' files and comes back once

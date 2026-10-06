@@ -69,9 +69,9 @@ def merge(osm, os_, prio):
     if len(pr):
         pr["mrank"] = pr.method.map({"overlap": 0, "proximity": 1})
         # an OSM point belongs to its single nearest OS polygon only
-        pts = pr[pr.osm_point].sort_values(["osm", "mrank", "dist"]).drop_duplicates("osm")
+        pts = pr[pr.osm_point].sort_values(["osm", "mrank", "dist", "os"]).drop_duplicates("osm")      # 'os' last: ties are settled the same way every run
         pr = pd.concat([pr[~pr.osm_point], pts])
-        pr = pr.sort_values(["os", "mrank", "same_type", "osm_area"], ascending=[True, True, False, True])
+        pr = pr.sort_values(["os", "mrank", "same_type", "osm_area", "osm"], ascending=[True, True, False, True, True])
         best = pr.drop_duplicates("os").set_index("os")                       # the first (best-ranked) candidate per OS building
         tied = pr[pr.mrank.to_numpy() == best.mrank.reindex(pr.os).to_numpy()]    # candidates as good as the best one
         # only a real ambiguity if the tied OSM candidates would classify the building differently

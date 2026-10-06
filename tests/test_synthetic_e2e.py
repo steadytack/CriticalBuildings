@@ -95,3 +95,15 @@ def test_the_extract_route_gives_the_same_dataset_as_the_overpass_route(syntheti
 
 
 
+
+
+def test_a_second_run_reuses_the_cached_extract_read(synthetic_extract):
+    """Reading a country's extract takes minutes, so it is cached: a rebuild of silver with the same extract and OSM tags (here
+    forced with reuse_silver=False) must not read the file again."""
+    first = run(synthetic_extract, reuse_silver=False)
+    second = run(synthetic_extract, reuse_silver=False)
+    stages = synthetic_extract.stages_df()
+    notes = {r.run_id: json.loads(r.detail_json) for r in stages[stages.stage == "silver"].itertuples()}
+    assert notes[first["run_id"]]["OSM extract read"] == "from the extract file"
+    assert notes[second["run_id"]]["OSM extract read"] == "cached"
+    assert golden_utils.compare(second["dest"], BASELINE, DROP) == []
