@@ -7,9 +7,11 @@ route in silver.load_elements, a table of (osm_id, tags, geometry), so the class
 Only the tags the rules use are kept (plus the name and the building tag), so the reader is told exactly which keys to look at,
 the same way the Overpass query is built from the active rule tags.
 """
+import hashlib
+import json
 import re
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import geopandas as gpd
@@ -114,6 +116,11 @@ def _open_options(osm_tags, tmp):
     return {"CONFIG_FILE": str(ini)}
 
 
+def _read_layer(pbf, layer, where, bbox, opts):
+    """One layer of the extract (runs in its own process)."""
+    return read_dataframe(pbf, layer=layer, where=where, bbox=bbox, **opts)
+
+
 def read_features(pbf, osm_tags, bbox=None):
     """The features carrying any active rule tag, as a GeoDataFrame(osm_id, tags, geometry) in British National Grid.
 
@@ -122,9 +129,13 @@ def read_features(pbf, osm_tags, bbox=None):
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
         opts = _open_options(osm_tags, tmp)
-        progress.step("Reading the points and areas of the OpenStreetMap extract (one pass over the file for each, in parallel)")
-        with ThreadPoolExecutor(max_workers=len(LAYERS)) as pool:          # each layer is its own pass over the whole file
-            frames = list(pool.map(lambda layer: read_dataframe(pbf, layer=layer, where=where, bbox=bbox, **opts), LAYERS))
+        progress.step("Reading the points and the areas of the OpenStreetMap extract (a pass over the whole file for each, "
+                      "in two processes)")
+        # Separate processes, not threads: two GDAL OSM readers in one process slowed each other to a crawl (13 minutes for
+        # England against 8 one after the other), whereas two processes each run at full speed.
+        with ProcessPoolExecutor(max_workers=len(LAYERS)) as pool:
+            frames = list(pool.map(_read_layer, [pbf] * len(LAYERS), LAYERS, [where] * len(LAYERS), [bbox] * len(LAYERS),
+                                   [opts] * len(LAYERS)))
         for layer, df in zip(LAYERS, frames, strict=True):
             progress.note(f"OSM {layer} read", len(df))
             rows += _to_rows(df, layer, osm_tags)
@@ -164,6 +175,37 @@ def read_buildings_inside(pbf, osm_tags, areas, bbox=None, batch_size=100_000):
         kind, oid = ("way", way) if isinstance(way, str) and way else ("relation", rec["osm_id"])
         rows.append({"osm_id": f"{kind}/{oid}", "tags": _tags(rec, columns, keys), "geometry": rec["geometry"]})
     return gpd.GeoDataFrame(rows, columns=["osm_id", "tags", "geometry"], geometry="geometry", crs=27700)
+
+
+def cache_name(osm_tags, bbox):
+    """File name for the cached read of an extract: it depends on the tags asked for and the part of the file read."""
+    key = json.dumps([sorted(osm_tags), None if bbox is None else [round(float(v), 4) for v in bbox]])
+    return "osm_extract_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12] + ".parquet"
+
+
+def save_cache(path, feats, blds):
+    """The features and the area buildings in one parquet file (tags as JSON text)."""
+    both = pd.concat([feats.assign(kind="feature"), blds.assign(kind="building")], ignore_index=True)
+    both["tags"] = both["tags"].map(json.dumps)
+    gpd.GeoDataFrame(both, geometry="geometry", crs=27700).to_parquet(path)
+
+
+def load_cache(path):
+    both = gpd.read_parquet(path)
+    both["tags"] = both["tags"].map(json.loads)
+    feats = both[both.kind == "feature"].drop(columns="kind").reset_index(drop=True)
+    blds = both[both.kind == "building"].drop(columns="kind").reset_index(drop=True)
+    return feats, blds
+
+
+def read_all(pbf, osm_tags, bbox=None):
+    """The tagged features and the buildings inside the area-type features (port, military land, aerodrome), read from the extract.
+
+    The buildings are those inside any area-type polygon (a superset of what the rules end up using), so the result depends only
+    on the extract and the tags asked for: it can be cached."""
+    feats = read_features(pbf, osm_tags, bbox)
+    progress.step("Finding the buildings inside port, military and aerodrome areas")
+    return feats, read_buildings_inside(pbf, osm_tags, area_geometries(feats), bbox)
 
 
 def area_geometries(features):

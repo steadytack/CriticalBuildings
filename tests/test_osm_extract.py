@@ -78,3 +78,16 @@ def test_a_missing_or_foreign_file_is_an_error_not_an_empty_result(tmp_path):
     bad.write_text("not an osm file", encoding="utf-8")
     with pytest.raises(Exception):  # noqa: B017, PT011 - GDAL's own error type; the point is that it does not return nothing
         osm_extract.read_features(str(bad), TAGS)
+
+
+def test_the_read_can_be_cached_and_comes_back_identical(extract, tmp_path):
+    feats, blds = osm_extract.read_all(extract, TAGS)
+    assert set(feats.osm_id) == {"node/1", "node/2", "way/100"} and list(blds.osm_id) == ["way/101"]   # the hut inside the military area
+    path = tmp_path / "cache.parquet"
+    osm_extract.save_cache(path, feats, blds)
+    f2, b2 = osm_extract.load_cache(path)
+    assert list(f2.osm_id) == list(feats.osm_id) and list(f2.tags) == list(feats.tags) and list(b2.tags) == list(blds.tags)
+    assert f2.geometry.geom_equals(feats.geometry).all() and f2.crs.to_epsg() == 27700
+    other = osm_extract.cache_name([*TAGS, ("amenity", "school")], None)
+    assert osm_extract.cache_name(TAGS, None) != other                            # other tags, other cache file
+    assert osm_extract.cache_name(TAGS, None) == osm_extract.cache_name(list(reversed(TAGS)), None)

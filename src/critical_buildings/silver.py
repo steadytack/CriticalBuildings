@@ -106,14 +106,30 @@ def _row(source, sid, name, rule, refs, geom, note="", osm_building=""):
                 "matched_refs": ";".join(str(r) for r in sorted(refs)), "note": note, "rule_notes": rule.notes, "osm_building": osm_building, "geometry": geom}
 
 
+def _extract_features(pbf, osm_tags, bbox, area):
+    """(features, area buildings) from the extract. Reading a country takes about 15 minutes, so the result is kept as a conformed
+    table: it only has to be read again when the extract or the OSM tags the rules ask for change, not for any other rule edit."""
+    name = osm_extract.cache_name(osm_tags, bbox)
+    inputs = [("osm_extract", None)]
+    cached = paths.conformed_lookup(area, name, inputs)
+    if cached is not None:
+        progress.step("Using the cached read of the OpenStreetMap extract (same extract and same OSM tags as before)")
+        progress.note("OSM extract read", "cached")
+        return osm_extract.load_cache(cached)
+    progress.note("OSM extract read", "from the extract file")
+    feats, blds = osm_extract.read_all(pbf, osm_tags, bbox)
+    osm_extract.save_cache(paths.silver_conformed_dir(area) / name, feats, blds)
+    paths.conformed_stamp(area, name, inputs)
+    return feats, blds
+
+
 def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
     osm_rules = [t for t in tags if t.source == "OSM"]
     osm_tags = sorted({(t.key, t.value) for t in osm_rules})
     pbf = paths.bronze_file("osm_extract", "extract.osm.pbf", area=area) if config.load_area(area).get("osm_extract") else None
     bbox = tuple(gpd.GeoSeries([box(*boundary.bounds)], crs=27700).to_crs(4326).total_bounds) if pbf and boundary is not None else None
-    if pbf:                                                    # an extract: stream the tagged features out of the PBF file
-        progress.step("Reading the tagged OpenStreetMap features from the extract")
-        feats = osm_extract.read_features(pbf, osm_tags, bbox)
+    if pbf:                         # an extract: stream the tagged features out of the PBF file (minutes for a country), cached
+        feats, blds = _extract_features(pbf, osm_tags, bbox, area)
     else:
         feats = load_elements(paths.bronze_file("osm_overpass", "osm_features.json", area=area))
     rows, areas, sites = [], [], []
@@ -139,11 +155,7 @@ def classify_osm(tags, boundary=None, area=paths.DEFAULT_AREA):
 
     # area-type features (port, military land, aerodrome): classify the buildings inside them
     own_ids = {r["source_id"] for r in rows}
-    if pbf:
-        progress.step("Finding the buildings inside port, military and aerodrome areas")
-        blds = osm_extract.read_buildings_inside(pbf, osm_tags, [f.geometry for f, _, _ in areas
-                                                                if f.geometry.geom_type in ("Polygon", "MultiPolygon")], bbox)
-    else:
+    if not pbf:
         blds = load_elements(paths.bronze_file("osm_overpass", "osm_area_buildings.json", area=area))
     blds = blds[~blds.osm_id.isin(own_ids)]
     pts = blds.geometry.representative_point()
@@ -214,13 +226,37 @@ def classify_os(tags, boundary, area=paths.DEFAULT_AREA):
     return gpd.GeoDataFrame(rows, columns=CLASSIFIED_COLS, geometry="geometry", crs=27700), total
 
 
+def _valid_polygonal(geom):
+    """A valid version of an invalid polygon that is still polygonal (make_valid can return a collection with stray lines)."""
+    fixed = shapely.make_valid(geom)
+    if fixed.geom_type in ("Polygon", "MultiPolygon"):
+        return fixed
+    parts = [p for g in getattr(fixed, "geoms", [fixed]) for p in (g.geoms if g.geom_type == "MultiPolygon" else [g])
+             if p.geom_type == "Polygon"]
+    return unary_union(parts) if parts else geom.buffer(0)
+
+
+def repair_geometries(gdf):
+    """Make every invalid polygon in `gdf` valid. A self-intersecting outline (a figure of eight, a ring touching itself) is a mapping
+    slip, common enough in a country's worth of data, and makes GEOS refuse to intersect it ('TopologyException'), which stopped
+    the whole run."""
+    gdf = gdf.copy()
+    polygonal = gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
+    bad = polygonal & ~gdf.geometry.is_valid
+    if bad.any():
+        gdf.loc[bad, gdf.geometry.name] = gdf.geometry[bad].map(_valid_polygonal).to_numpy()
+        log.info("repaired %s invalid polygons", int(bad.sum()))
+    return gdf
+
+
 def classify_features(tags, boundary=None, area=paths.DEFAULT_AREA):
     """Classify every OSM and OS feature in the area with the rule tags. Returns osm, os, os_total, site candidates."""
     boundary = boundary if boundary is not None else area_boundary(area)
     osm, osm_sites = classify_osm(tags, boundary, area)
     os_, os_total = classify_os(tags, boundary, area)
     os_sites = load_os_sites(tags, boundary, area)
-    return osm, os_, os_total, pd.concat([os_sites, osm_sites], ignore_index=True)
+    return (repair_geometries(osm), repair_geometries(os_), os_total,
+            repair_geometries(pd.concat([os_sites, osm_sites], ignore_index=True)))
 
 
 # ====================================================================================================
