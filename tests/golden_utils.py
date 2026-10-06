@@ -31,7 +31,8 @@ def canonical_hash(csv_path, key, drop=VOLATILE, columns=None):
     df = df.drop(columns=[c for c in drop if c in df.columns])
     df = df.sort_values(key).reset_index(drop=True)
     df = df[sorted(df.columns)]
-    return hashlib.sha256(df.to_csv(index=False).encode("utf-8")).hexdigest(), df
+    # an explicit line ending: pandas would use the platform's (CRLF on Windows, LF on Linux) and the hash would differ between them
+    return hashlib.sha256(df.to_csv(index=False, lineterminator="\r\n").encode("utf-8")).hexdigest(), df
 
 
 def describe(outputs_dir, drop=VOLATILE):
