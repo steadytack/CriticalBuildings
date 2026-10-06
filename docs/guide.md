@@ -240,7 +240,49 @@ map); they are still read and released as they are.
 
 **Area:** add an entry under `areas:` in `settings.yml` (the OSM boundary by `ref:gss` code, not just a name, and the OS 100 km
 grid squares), then `fetch --area <name>` and `run --area <name>`. Registers are national and shared; rules are shared;
-only the data differs. (Only Suffolk has been run.)
+only the data differs. Two areas are configured: `suffolk` (a county, OpenStreetMap through the Overpass API) and `england`.
+
+### Running the whole of England
+
+```bash
+python -m critical_buildings fetch --area england --only osm,osmx,os   # about 3.5 GB: the OSM extract and 27 OS grid squares
+python -m critical_buildings run --area england
+```
+
+The registers (DfE, CQC, NHS ODS, Code-Point) are national, so a Suffolk `fetch` already has them. Measured on a laptop:
+
+| | First run | Rerun (same data) |
+|---|---|---|
+| Clean and classify (silver) | about 9 minutes, nearly all of it reading the OpenStreetMap extract | about 1 minute (the extract read is cached) |
+| Match, group, identify (gold) | about 1 minute | about 1 minute |
+| Write deliverables (publish) | about 1 minute | about 1 minute |
+| **Total** | **about 11 minutes** | **about 3 minutes** |
+
+The result is about 203,000 buildings in about 78,600 sites, in `data/gold/england/<run id>/` (`dataset.gpkg` 270 MB,
+`buildings.csv` 175 MB, `report.xlsx` 19 MB).
+
+**Big areas read OpenStreetMap from an extract.** The Overpass API times out on anything much bigger than a county, so an area can set
+`osm_extract: <Geofabrik path>` (for England, `europe/united-kingdom/england`). `fetch` then downloads that extract
+(`osmx`; the boundary still comes from Overpass) and silver reads the tagged features straight out of the PBF file with GDAL's
+streaming OSM driver (`osm_extract.py`). The features, tags and geometry have the same shape as the Overpass route, so
+classification, matching and everything after it are unchanged; on Suffolk the two routes agree on every feature they share
+(about 1,400; 21 appear only in the Overpass route and 23 only in the extract route, at multipolygon edges). Only the tags the
+rules use are read, so a new rule tag means a new `fetch`, as with Overpass. Open ways (about three features in England, all
+mapping mistakes) are not read, because every pass over a country's file costs minutes.
+
+**What makes it scale.** Nothing holds all the buildings in memory, and no step compares every record with every other:
+
+- the extract and the OS Building layer are streamed in batches and filtered as they are read;
+- the read of the extract is cached as a conformed table, keyed by the extract and the OSM tags asked for, so any other rule edit
+  skips its 8 minutes;
+- the area boundary is prepared for fast point-in-polygon tests, and the matching steps use spatial indexes and lookups by
+  array position instead of per-row pandas access (site IDs, roles and register matching took 14 of the first 15 minutes of gold);
+- invalid polygons (a figure-of-eight outline, common in a country's worth of map data) are repaired when silver is built, and a
+  feature that crosses the edge of two OS tiles is read once, by its ID.
+
+Building and Site IDs are shared across areas: an England run keeps the IDs a Suffolk run gave the same buildings. (A run marks
+buildings it did not see as retired, whatever area they are in, so running a small area after a large one retires the rest until
+the next large run; their IDs are kept.)
 
 **Source:** add it under `sources:` in `settings.yml` (licence and attribution are copied into manifests and
 `ATTRIBUTION.txt`), write a `fetch_<name>` function in `sources.py`, read it in `silver.py`, and add tests (see
