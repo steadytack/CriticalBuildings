@@ -7,6 +7,7 @@ inside it) or are within point_distance_m of each other (lower confidence; the t
 An OSM point is matched to only its single nearest OS polygon; an OSM polygon (e.g. a school site) can match
 several OS building polygons.
 """
+import functools
 import re
 from difflib import SequenceMatcher
 
@@ -140,20 +141,46 @@ def merge(osm, os_, prio):
 # Name matching (shared by the merge, site and register-matching stages)
 # ====================================================================================================
 
+_TOKENS = {"settings": None, "by_name": {}}
+
+
 def _tokens(name):
+    """The words of a name without stop words. Remembered per name: the same few thousand site names are compared with every
+    register record near them, and splitting them again each time was a large part of a national run."""
     if name is None or (isinstance(name, float) and pd.isna(name)):      # None / NaN: no name, no tokens
         return []
-    s = re.sub(r"[^a-z0-9 ]", " ", str(name).lower().replace("&", " and ").replace("st.", "saint").replace("st ", "saint "))
-    toks = [t for t in s.split() if t]
-    keep = [t for t in toks if t not in config.get().reference_match.stop_words]
-    return keep or toks
+    settings = config.get()
+    if _TOKENS["settings"] is not settings:                              # settings changed (tests): the stop words may differ
+        _TOKENS["settings"], _TOKENS["by_name"] = settings, {}
+    known = _TOKENS["by_name"].get(name)
+    if known is None:
+        s = re.sub(r"[^a-z0-9 ]", " ", str(name).lower().replace("&", " and ").replace("st.", "saint").replace("st ", "saint "))
+        toks = [t for t in s.split() if t]
+        keep = [t for t in toks if t not in settings.reference_match.stop_words]
+        known = _TOKENS["by_name"][name] = tuple(keep or toks)
+    return list(known)
+
+
+@functools.lru_cache(maxsize=500_000)
+def _strict_form(name):
+    return re.sub(r"[^a-z0-9]", "", str(name).lower().replace("&", "and"))
 
 
 def strict_similarity(a, b):
     """Full-name similarity (no stop-word removal): 'Nayland Surgery' and 'Nayland House Care Home' are different."""
-    na = re.sub(r"[^a-z0-9]", "", str(a).lower().replace("&", "and"))
-    nb = re.sub(r"[^a-z0-9]", "", str(b).lower().replace("&", "and"))
+    na, nb = _strict_form(a), _strict_form(b)
     return SequenceMatcher(None, na, nb).ratio() if na and nb else 0.0
+
+
+def strict_similarity_at_least(a, b, threshold):
+    """strict_similarity(a, b) >= threshold, without working out the full ratio when a cheap upper bound already rules it out."""
+    na, nb = _strict_form(a), _strict_form(b)
+    if not na or not nb:
+        return 0.0 >= threshold
+    matcher = SequenceMatcher(None, na, nb)
+    if matcher.real_quick_ratio() < threshold or matcher.quick_ratio() < threshold:
+        return False
+    return matcher.ratio() >= threshold
 
 
 def name_similarity(a, b):
