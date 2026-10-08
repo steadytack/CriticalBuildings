@@ -94,7 +94,7 @@ def write_reports(xw, df, changes, version, today, new_ids, os_total, sites=None
             ["Site ID", "Site Name", "Site Type", "Verification", "Verification Note", "Buildings in Site",
              "Site Method"]].copy()
         unv.insert(5, "Suggested Action", [suggest_verification_action(v, n) for v, n in
-                                           zip(unv["Verification"], unv["Verification Note"])])
+                                           zip(unv["Verification"], unv["Verification Note"], strict=False)])
         unv.sort_values(["Verification", "Site Type", "Site Name"]).to_excel(
             xw, sheet_name="Unverified sites", index=False)
     if sites is not None:

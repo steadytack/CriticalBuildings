@@ -49,7 +49,7 @@ def merge(osm, os_, prio):
     osm_rule = osm["rule_ref"].to_numpy()
     loose = config.get().matching.loose_categories
     pairs = []
-    for os_i, o in zip(cand.index.to_numpy(), cand["index_right"].to_numpy().astype(int)):
+    for os_i, o in zip(cand.index.to_numpy(), cand["index_right"].to_numpy().astype(int), strict=False):
         if os_cat[os_i] != osm_cat[o]:
             continue
         if os_cat[os_i] not in loose and os_type[os_i] != osm_type[o]:
@@ -75,7 +75,7 @@ def merge(osm, os_, prio):
         tied = pr[pr.mrank.to_numpy() == best.mrank.reindex(pr.os).to_numpy()]    # candidates as good as the best one
         # only a real ambiguity if the tied OSM candidates would classify the building differently
         ncand = pd.Series(osm_rule[tied.osm.to_numpy().astype(int)], index=tied.os.to_numpy()).groupby(level=0).nunique()
-        for os_i, osm_j, method in zip(best.index, best.osm, best.method):
+        for os_i, osm_j, method in zip(best.index, best.osm, best.method, strict=False):
             match[os_i] = {"osm": int(osm_j), "method": method, "ncand": int(ncand[os_i])}
     used_osm = {m["osm"] for m in match.values()}
 

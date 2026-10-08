@@ -160,7 +160,7 @@ def write_docs(xw, df, sites, version, today, changes, out):
     src = _source_dates()
     lines = ["ATTRIBUTION AND LICENCES", "",
              "This dataset combines the sources below. Include the attribution lines when you share or publish it.", ""]
-    for name, use, lic, attr, files, date, size in src:
+    for name, _use, lic, attr, _files, _date, _size in src:
         lines += [f"{name} - {lic}", f"  {attr}", ""]
     lines += [("Note: OpenStreetMap data is under the ODbL (share-alike). Check with your information governance "
                "or legal team before distributing this dataset outside the organisation."), ""]

@@ -34,7 +34,7 @@ def _merge_candidates(cs):
 
     j = gpd.sjoin(cs[["geometry", "category"]], cs[["geometry", "category"]], predicate="intersects")
     cat, geom = cs["category"].to_numpy(), cs.geometry.to_numpy()
-    for i, k in zip(j.index.to_numpy(), j["index_right"].to_numpy().astype(int)):
+    for i, k in zip(j.index.to_numpy(), j["index_right"].to_numpy().astype(int), strict=False):
         if k <= i or cat[i] != cat[k]:
             continue
         a, b = geom[i], geom[k]
@@ -96,7 +96,7 @@ def assign_sites(recs, site_candidates):
         keep = merged.reset_index(drop=True)
         kidx = keep.sindex
         k_cat, k_name = keep["category"].to_numpy(), keep["name"].to_numpy()
-        for i, r in zip(left.index, left.itertuples(index=False)):
+        for i, r in zip(left.index, left.itertuples(index=False), strict=False):
             for ci in kidx.query(r.geometry.buffer(_c().attach_m), predicate="intersects"):
                 if (k_cat[ci] == r.category and isinstance(k_name[ci], str) and k_name[ci]
                         and k_name[ci].casefold() == str(r.name).casefold()):
@@ -114,7 +114,7 @@ def assign_sites(recs, site_candidates):
         all_geom, all_name = recs.geometry.to_numpy(), recs["name"].to_numpy()
         pos_of = pd.Series(range(len(recs)), index=recs.index)          # recs label -> position
         set_idx, set_gid, set_method = [], [], []
-        for k, grp in left.groupby(key):
+        for _, grp in left.groupby(key):
             # quad_segs=16 is what Geometry.buffer() uses; shapely.buffer() defaults to 8 and would change the outlines
             u = unary_union(shapely.buffer(grp.geometry.to_numpy(), half_gap, quad_segs=16))
             parts = list(u.geoms) if u.geom_type == "MultiPolygon" else [u]
@@ -122,7 +122,7 @@ def assign_sites(recs, site_candidates):
             pts = gpd.GeoDataFrame(geometry=grp.geometry.representative_point().values, crs=27700, index=grp.index)
             j = gpd.sjoin(pts, pg, predicate="within")
             j = j[~j.index.duplicated(keep="first")]
-            for p, members in j.groupby("p"):
+            for _, members in j.groupby("p"):
                 gid += 1
                 pos = pos_of[members.index].to_numpy()
                 method = "Single building" if len(pos) == 1 else "Proximity cluster"
@@ -151,7 +151,7 @@ def assign_sites(recs, site_candidates):
     best_rank = recs.importance.map(IMP_RANK).groupby(recs.site_group).min()
     importance = best_rank.map({v: k for k, v in IMP_RANK.items()})
     first_name = {}
-    for g, n in zip(recs.site_group, recs["name"]):
+    for g, n in zip(recs.site_group, recs["name"], strict=False):
         if n and g not in first_name:
             first_name[g] = n
     rows = []
