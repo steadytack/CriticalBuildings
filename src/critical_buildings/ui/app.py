@@ -83,7 +83,7 @@ def main():
     area = sidebar(s)
     st.title(PRODUCT.name)
     names = ["Pipeline", "Run", "Runs", "Data", "Lineage", "Quality", "Settings", "Reference data", "Help"]
-    tabs = dict(zip(names, st.tabs(names)))
+    tabs = dict(zip(names, st.tabs(names), strict=False))
     with tabs["Pipeline"]:
         views.tab_pipeline(s, area)
     with tabs["Run"]:
@@ -100,7 +100,7 @@ def main():
         views.tab_settings(s)
     with tabs["Reference data"]:
         sub = dict(zip(["Rules", "Role settings", "Register mapping", "Review & decisions", "Versions & history"],
-                       st.tabs(["Rules", "Role settings", "Register mapping", "Review & decisions", "Versions & history"])))
+                       st.tabs(["Rules", "Role settings", "Register mapping", "Review & decisions", "Versions & history"]), strict=False))
         with sub["Rules"]:
             rules_tabs.tab_rules(s)
         with sub["Role settings"]:

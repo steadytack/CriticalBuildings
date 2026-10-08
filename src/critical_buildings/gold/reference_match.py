@@ -197,7 +197,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     recs and sites carry the authoritative attributes (plus new records for register entries that matched no site);
     gaps are the register records that became new buildings; matches is the table of accepted (record, site) pairs."""
     categories = {t.building_type: t.category for t in tags}
-    site_names = dict(zip(sites.site_group, sites.name))
+    site_names = dict(zip(sites.site_group, sites.name, strict=False))
     m = match_reference(ref, sites, site_names, categories)
     mdf = pd.DataFrame(m, columns=["ri", "site_group", "dist", "name_sim"])
 
@@ -206,7 +206,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     #   register point at the postcode, OS/OSM site away  -> the OS/OSM location is wrong or old: do not match
     kept_notes, moved_notes, unresolved_notes = {}, {}, {}
     if pc:
-        site_geom = dict(zip(sites.site_group, sites.geometry))
+        site_geom = dict(zip(sites.site_group, sites.geometry, strict=False))
         keep = []
         for row in mdf.itertuples():
             if row.dist <= _c().location_review_m:
@@ -241,7 +241,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     conflicts = []
     st_geom, st_type, st_group, st_name = (sites_r.geometry.to_numpy(), sites_r["building_type"].to_numpy(),
                                            sites_r["site_group"].to_numpy(), sites_r["name"].to_numpy())
-    for ri, geom, r_type, r_name in zip(ref.index, ref.geometry, ref.building_type, ref.ref_name):
+    for ri, geom, r_type, r_name in zip(ref.index, ref.geometry, ref.building_type, ref.ref_name, strict=False):
         if ri in done_refs:
             continue
         for ci in sidx2.query(geom.buffer(_c().conflict_m), predicate="intersects"):
@@ -322,7 +322,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
         site_type[g] = new_type
 
     # a site confirmed by an authoritative source settles record-level merge doubts
-    verified = {g for g in by_site}
+    verified = set(by_site)
     clear = recs.site_group.isin(verified) & (recs.source == "Both") & (recs.review != "")
     recs.loc[clear, "review"] = ""
     recs.loc[clear & (recs.confidence == "Low"), "confidence"] = "Medium"
@@ -336,7 +336,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
         bs = blds.sindex
         blds_geom = blds.geometry.to_numpy()
         os_name, os_type = orig_sites["name"].to_numpy(), orig_sites["building_type"].to_numpy()
-        for ri, r in zip(gaps.index, gaps.itertuples(index=False)):
+        for ri, r in zip(gaps.index, gaps.itertuples(index=False), strict=False):
             rule = rule_for.get(r.building_type)
             if rule is None:
                 continue
@@ -430,5 +430,5 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     for c in cols:
         recs["ref_" + c] = recs.site_group.map(info_df[c])
         sites["ref_" + c] = sites.site_group.map(info_df[c])
-    gap_log = ref.loc[[g for g in gaps.index]] if len(gaps) else gaps
+    gap_log = ref.loc[list(gaps.index)] if len(gaps) else gaps
     return recs, sites, gap_log, mdf

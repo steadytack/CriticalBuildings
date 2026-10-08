@@ -27,7 +27,7 @@ def test_newly_excluded_building_is_reported_as_removed():
     after = before.copy()
     after.loc[after["Building ID"] == "BLDG-000002", "Excluded"] = True
     changes = diff_runs(_prev(before), after)
-    assert list(zip(changes.Change, changes["Building ID"])) == [("Removed", "BLDG-000002")]
+    assert list(zip(changes.Change, changes["Building ID"], strict=False)) == [("Removed", "BLDG-000002")]
 
 
 def test_diff_without_excluded_column_still_works():

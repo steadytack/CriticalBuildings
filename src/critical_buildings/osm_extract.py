@@ -80,7 +80,7 @@ def where_clause(osm_tags):
 
 
 def parse_hstore(text):
-    return {k: v for k, v in HSTORE.findall(text)} if isinstance(text, str) else {}
+    return dict(HSTORE.findall(text)) if isinstance(text, str) else {}
 
 
 def _tags(row, columns, osm_tags_by_key):

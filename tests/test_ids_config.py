@@ -11,7 +11,7 @@ from critical_buildings.gold import steps
 
 def recs_of(*rows):
     cols = ["source", "source_feature_id", "geometry"]
-    return gpd.GeoDataFrame([dict(zip(cols, r)) for r in rows], columns=cols, geometry="geometry", crs=27700)
+    return gpd.GeoDataFrame([dict(zip(cols, r, strict=False)) for r in rows], columns=cols, geometry="geometry", crs=27700)
 
 
 A = ("Both", "os-a / way/1", square(0, 0))
@@ -24,7 +24,7 @@ def test_building_ids_are_stable_across_runs(store):
     first, new1 = steps.assign_ids(recs_of(A, B, C), "2026-10-01", store, "run1")
     assert list(first["Building ID"]) == ["BLDG-000001", "BLDG-000002", "BLDG-000003"] and new1 == 3
     second, new2 = steps.assign_ids(recs_of(C, A, B), "2026-11-01", store, "run2")          # different order
-    assert dict(zip(second.source_feature_id, second["Building ID"])) == dict(zip(first.source_feature_id, first["Building ID"]))
+    assert dict(zip(second.source_feature_id, second["Building ID"], strict=False)) == dict(zip(first.source_feature_id, first["Building ID"], strict=False))
     assert new2 == 0
     assert (second["Created Date"].isin(["2026-10-01"])).all()                              # created date is kept
 
@@ -200,7 +200,7 @@ def test_settings_edit_changes_only_the_named_value_and_keeps_comments(tmp_path,
         assert config.get().merge.point_distance_m == 30 and config.get().quality.band_high_min == 80
         assert len(after.splitlines()) == len(before.splitlines())
         assert "# OS and OSM features this close (metres) may be the same building" in after
-        changed = [i for i, (a, b) in enumerate(zip(before.splitlines(), after.splitlines())) if a != b]
+        changed = [i for i, (a, b) in enumerate(zip(before.splitlines(), after.splitlines(), strict=False)) if a != b]
         assert len(changed) == 2
     finally:
         monkeypatch.undo()

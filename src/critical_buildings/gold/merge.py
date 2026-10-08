@@ -50,7 +50,7 @@ def merge(osm, os_, prio):
     osm_rule = osm["rule_ref"].to_numpy()
     loose = config.get().matching.loose_categories
     pairs = []
-    for os_i, o in zip(cand.index.to_numpy(), cand["index_right"].to_numpy().astype(int)):
+    for os_i, o in zip(cand.index.to_numpy(), cand["index_right"].to_numpy().astype(int), strict=False):
         if os_cat[os_i] != osm_cat[o]:
             continue
         if os_cat[os_i] not in loose and os_type[os_i] != osm_type[o]:
@@ -76,7 +76,7 @@ def merge(osm, os_, prio):
         tied = pr[pr.mrank.to_numpy() == best.mrank.reindex(pr.os).to_numpy()]    # candidates as good as the best one
         # only a real ambiguity if the tied OSM candidates would classify the building differently
         ncand = pd.Series(osm_rule[tied.osm.to_numpy().astype(int)], index=tied.os.to_numpy()).groupby(level=0).nunique()
-        for os_i, osm_j, method in zip(best.index, best.osm, best.method):
+        for os_i, osm_j, method in zip(best.index, best.osm, best.method, strict=False):
             match[os_i] = {"osm": int(osm_j), "method": method, "ncand": int(ncand[os_i])}
     used_osm = {m["osm"] for m in match.values()}
 
@@ -176,7 +176,7 @@ def strict_similarity_at_least(a, b, threshold):
     """strict_similarity(a, b) >= threshold, without working out the full ratio when a cheap upper bound already rules it out."""
     na, nb = _strict_form(a), _strict_form(b)
     if not na or not nb:
-        return 0.0 >= threshold
+        return threshold <= 0.0
     matcher = SequenceMatcher(None, na, nb)
     if matcher.real_quick_ratio() < threshold or matcher.quick_ratio() < threshold:
         return False

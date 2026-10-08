@@ -13,12 +13,12 @@ FIRE = {"category": "Emergency", "building_type": "Fire Station", "importance": 
 
 def recs(*rows):
     cols = ["name", "category", "building_type", "importance", "geometry"]
-    return gpd.GeoDataFrame([dict(zip(cols, r)) for r in rows], geometry="geometry", crs=27700)
+    return gpd.GeoDataFrame([dict(zip(cols, r, strict=False)) for r in rows], geometry="geometry", crs=27700)
 
 
 def candidates(*rows):
     cols = ["name", "category", "origin", "key", "geometry"]
-    return gpd.GeoDataFrame([dict(zip(cols, r)) for r in rows], columns=cols, geometry="geometry", crs=27700)
+    return gpd.GeoDataFrame([dict(zip(cols, r, strict=False)) for r in rows], columns=cols, geometry="geometry", crs=27700)
 
 
 # ------------------------------------------------------------------ sites
@@ -51,7 +51,7 @@ def test_a_same_named_stray_just_outside_the_outline_joins_the_site():
 def test_nearby_buildings_without_a_site_polygon_form_a_proximity_cluster():
     r = recs(("", *FIRE.values(), square(0, 0)), ("", *FIRE.values(), square(40, 0)), ("", *FIRE.values(), square(900, 900)))
     _, s = sites.assign_sites(r, candidates())
-    methods = dict(zip(s.method, s.n_buildings))
+    methods = dict(zip(s.method, s.n_buildings, strict=False))
     assert methods == {"Proximity cluster": 2, "Single building": 1}
 
 
@@ -62,7 +62,7 @@ def test_a_proximity_cluster_takes_its_most_common_name_and_ties_go_to_the_first
              ("", *FIRE.values(), square(2000, 0)))
     out, s = sites.assign_sites(r, candidates())
     members = {g: tuple(grp.index) for g, grp in out.groupby("site_group")}
-    name_of = {members[g]: n for g, n in zip(s.site_group, s["name"])}
+    name_of = {members[g]: n for g, n in zip(s.site_group, s["name"], strict=False)}
     assert name_of == {(0, 1, 2): "Station Road Depot", (3, 4): "Alpha", (5,): ""}
 
 
@@ -109,7 +109,7 @@ SETTINGS = {"min_area": 150.0, "ancillary": {"garage"}, "primary": {"school"}, "
 
 def role_recs(*rows):
     cols = ["site_group", "building_type", "osm_building", "method", "geometry"]
-    return gpd.GeoDataFrame([dict(zip(cols, r)) for r in rows], geometry="geometry", crs=27700)
+    return gpd.GeoDataFrame([dict(zip(cols, r, strict=False)) for r in rows], geometry="geometry", crs=27700)
 
 
 def roles_of(*rows):

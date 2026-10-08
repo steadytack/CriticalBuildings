@@ -308,7 +308,7 @@ def postcode_points(wanted=None):
     table = _postcode_table()
     if wanted is not None:
         table = table[table.index.isin(list(wanted))]
-    return dict(zip(table.index, zip(table["EA"], table["NO"])))
+    return dict(zip(table.index, zip(table["EA"], table["NO"], strict=False), strict=False))
 
 
 def _ods():
@@ -321,12 +321,12 @@ def _ods():
         return [df[p].tolist() for p in positions]
 
     code, trust_name = columns("etr.csv", 0, 1)
-    trust = dict(zip(code, trust_name))
+    trust = dict(zip(code, trust_name, strict=False))
     out = {}
-    for code, name, postcode, closed, parent in zip(*columns("ets.csv", 0, 1, 9, 11, 14)):
+    for code, name, postcode, closed, parent in zip(*columns("ets.csv", 0, 1, 9, 11, 14), strict=False):
         out[code] = {"name": name, "postcode": postcode, "status": "Closed" if closed else "Active",
                      "parent": trust.get(parent, parent), "kind": "ets"}
-    for code, name, postcode, status, parent in zip(*columns("epraccur.csv", 0, 1, 9, 12, 14)):
+    for code, name, postcode, status, parent in zip(*columns("epraccur.csv", 0, 1, 9, 12, 14), strict=False):
         out.setdefault(code, {"name": name, "postcode": postcode, "status": "Active" if status == "ACTIVE" else "Closed",
                               "parent": parent, "kind": "epraccur"})
     return out
@@ -357,7 +357,7 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
     source_checks.check_mapping_fields(mapping, "DfE", g.columns, "the DfE GIAS file")
     g = g.dropna(subset=["Easting", "Northing"])
     g = g[gpd.GeoSeries(gpd.points_from_xy(g.Easting, g.Northing), crs=27700, index=g.index).within(boundary)]
-    for r, pt in zip(g.to_dict("records"), gpd.points_from_xy(g.Easting, g.Northing)):      # dicts and one point array: no per-row Series
+    for r, pt in zip(g.to_dict("records"), gpd.points_from_xy(g.Easting, g.Northing), strict=False):      # dicts and one point array: no per-row Series
         t = map_type("DfE", r, mapping)
         if t in (None, "IGNORE"):
             dropped["unmapped" if t is None else "ignored"] += 1
@@ -384,7 +384,7 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
     inside = cg.within(boundary)
     c, cg = c[inside], cg[inside]
     cqc_ods = set()
-    for r, pt in zip(c.to_dict("records"), cg):          # c and cg were filtered together, so they line up
+    for r, pt in zip(c.to_dict("records"), cg, strict=False):          # c and cg were filtered together, so they line up
         code = str(r["Location ODS Code"]) if pd.notna(r["Location ODS Code"]) else ""
         t = map_type("CQC", r, mapping)
         if t in (None, "IGNORE"):
@@ -516,7 +516,7 @@ def load(d, area):
     return SilverTables(
         area, area_boundary(area), gpd.read_parquet(d / "osm.parquet"), gpd.read_parquet(d / "os.parquet"),
         meta["os_total"], gpd.read_parquet(d / "site_candidates.parquet"), ref_all,
-        ref_all[~ref_all.building_type.isin(["IGNORE", "UNMAPPED"])].copy(), dict(zip(pc.pc, zip(pc.e, pc.n))))
+        ref_all[~ref_all.building_type.isin(["IGNORE", "UNMAPPED"])].copy(), dict(zip(pc.pc, zip(pc.e, pc.n, strict=False), strict=False)))
 
 
 def build_or_load(rules, area=paths.DEFAULT_AREA, reuse=True):

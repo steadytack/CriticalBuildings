@@ -9,19 +9,19 @@ CATEGORIES = {"Primary School": "Education", "Hospital": "Care", "Fire Station":
 
 def refs(*rows):
     cols = ["ref_source", "ref_id", "ref_name", "building_type", "status", "geometry"]
-    return gpd.GeoDataFrame([dict(zip(cols, r)) for r in rows], columns=cols, geometry="geometry", crs=27700)
+    return gpd.GeoDataFrame([dict(zip(cols, r, strict=False)) for r in rows], columns=cols, geometry="geometry", crs=27700)
 
 
 def sites_of(*rows):
     cols = ["site_group", "name", "building_type", "geometry"]
-    return gpd.GeoDataFrame([dict(zip(cols, r)) for r in rows], columns=cols, geometry="geometry", crs=27700)
+    return gpd.GeoDataFrame([dict(zip(cols, r, strict=False)) for r in rows], columns=cols, geometry="geometry", crs=27700)
 
 
 def test_a_register_record_on_a_similarly_named_site_is_matched():
     s = sites_of((1, "Greenfield Primary School", "Primary School", square(0, 0)),
                  (2, "Elsewhere Fire Station", "Fire Station", square(5000, 0)))
     r = refs(("DfE GIAS", "100", "Greenfield Primary School", "Primary School", "Open", point(10, 10)))
-    got = rm.match_reference(r, s, dict(zip(s.site_group, s.name)), CATEGORIES)
+    got = rm.match_reference(r, s, dict(zip(s.site_group, s.name, strict=False)), CATEGORIES)
     assert [(ri, g) for ri, g, _, _ in got] == [(0, 1)]
 
 
@@ -29,7 +29,7 @@ def test_a_record_of_the_wrong_kind_or_far_away_is_not_matched():
     s = sites_of((1, "Greenfield Primary School", "Primary School", square(0, 0)))
     r = refs(("CQC", "c1", "Greenfield Hospital", "Hospital", "Active", point(10, 10)),
              ("DfE GIAS", "100", "Greenfield Primary School", "Primary School", "Open", point(9000, 0)))
-    assert rm.match_reference(r, s, dict(zip(s.site_group, s.name)), CATEGORIES) == []
+    assert rm.match_reference(r, s, dict(zip(s.site_group, s.name, strict=False)), CATEGORIES) == []
 
 
 def test_a_closed_school_listed_by_the_register_explains_an_unverified_site():

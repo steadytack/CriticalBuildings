@@ -40,6 +40,8 @@ markers = ["slow: end-to-end regression on the real bronze data (about a minute)
 
 [tool.ruff.lint]
 # E/F: errors and unused names; I: import order; DTZ: naive datetimes (local time is deliberate here and marked with
-# noqa); BLE: blind excepts (also marked). Long lines are allowed: the code keeps related arguments together.
-select = ["E", "F", "I", "DTZ", "BLE"]
+# noqa); BLE: blind excepts (also marked); B: likely bugs (zip lengths must be stated, unused loop variables); UP: outdated
+# syntax; C4/SIM/PIE/RET: needless comprehensions, nesting and returns. Long lines are allowed: the code keeps related
+# arguments together.
+select = ["E", "F", "I", "DTZ", "BLE", "B", "UP", "C4", "SIM", "PIE", "RET"]
 ignore = ["E501"]

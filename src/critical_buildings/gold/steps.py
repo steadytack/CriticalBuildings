@@ -31,14 +31,14 @@ def assign_ids(recs, today, store, run_id, pending=None):
     recs["os_key"] = recs.source_feature_id.str.split(" / ").str[0].where(recs.source != "OSM")
     recs["osm_key"] = recs.source_feature_id.str.split(" / ").str[-1].where(recs.source != "OS Important Buildings")
     reg = store.building_registry_df()
-    by_os = {k: b for k, b in zip(reg.os_key, reg.building_id) if isinstance(k, str)}
+    by_os = {k: b for k, b in zip(reg.os_key, reg.building_id, strict=False) if isinstance(k, str)}
     osm_only = reg[reg.os_key.isna()]
-    by_osm = {k: b for k, b in zip(osm_only.osm_key, osm_only.building_id) if isinstance(k, str)}
-    created = dict(zip(reg.building_id, reg.created))
+    by_osm = {k: b for k, b in zip(osm_only.osm_key, osm_only.building_id, strict=False) if isinstance(k, str)}
+    created = dict(zip(reg.building_id, reg.created, strict=False))
     nxt = (reg.building_id.str[5:].astype(int).max() + 1) if len(reg) else 1
     ids = []
     taken = set()
-    for os_key, osm_key, source in zip(recs.os_key, recs.osm_key, recs.source):
+    for os_key, osm_key, source in zip(recs.os_key, recs.osm_key, recs.source, strict=False):
         b = by_os.get(os_key) if isinstance(os_key, str) else None
         if b is None and isinstance(osm_key, str) and source == "OSM":
             b = by_osm.get(osm_key)
@@ -60,7 +60,7 @@ def assign_ids(recs, today, store, run_id, pending=None):
         qi, ti = old.sindex.query(geoms.values, predicate="intersects")
         order = np.lexsort((ti, qi))
         done = set()
-        for q, t in zip(qi[order], ti[order]):
+        for q, t in zip(qi[order], ti[order], strict=False):
             cand = old_ids[t]
             if q in done or cand in taken:
                 continue
@@ -92,7 +92,7 @@ def assign_site_ids(recs, sites, today, store, run_id, pending=None):
     `pending` works as in assign_ids."""
     old_site = store.building_site_map()
     reg = store.site_registry_df()
-    created = dict(zip(reg.site_id, reg.created))
+    created = dict(zip(reg.site_id, reg.created, strict=False))
     nxt = (reg.site_id.str[5:].astype(int).max() + 1) if len(reg) else 1
     taken, mapping = set(), {}
     # The Site IDs the buildings of each site had last time, collected for every site in one pass (a mask over all the buildings
@@ -119,7 +119,7 @@ def assign_site_ids(recs, sites, today, store, run_id, pending=None):
     sites["Site ID"] = sites.site_group.map(mapping)
     sites["Created Date"] = sites["Site ID"].map(created)
     site_created = {sid: created[sid] for sid in mapping.values()}
-    building_sites = dict(zip(recs["Building ID"], recs["Site ID"]))
+    building_sites = dict(zip(recs["Building ID"], recs["Site ID"], strict=False))
     if pending is None:
         store.save_site_registry(site_created, run_id)
         store.set_building_sites(building_sites)
