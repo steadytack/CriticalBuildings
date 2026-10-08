@@ -31,16 +31,19 @@ def canonical_hash(csv_path, key, drop=VOLATILE, columns=None):
     df = df.drop(columns=[c for c in drop if c in df.columns])
     df = df.sort_values(key).reset_index(drop=True)
     df = df[sorted(df.columns)]
-    return hashlib.sha256(df.to_csv(index=False).encode("utf-8")).hexdigest(), df
+    # an explicit line ending: pandas would use the platform's (CRLF on Windows, LF on Linux) and the hash would differ between them
+    return hashlib.sha256(df.to_csv(index=False, lineterminator="\r\n").encode("utf-8")).hexdigest(), df
 
 
-def describe(outputs_dir):
+def describe(outputs_dir, drop=VOLATILE):
     outputs_dir = Path(outputs_dir)
     out = {}
     for name, (fnames, key, columns) in FILES.items():
         path = first_existing(outputs_dir, fnames)
-        digest, df = canonical_hash(path, key, columns=columns)
-        out[name] = {"file": path.name, "rows": len(df), "columns": sorted(df.columns), "sha256": digest}
+        digest, df = canonical_hash(path, key, drop=drop, columns=columns)
+        out[name] = {"file": path.name, "rows": len(df), "columns": sorted(df.columns), "sha256": digest,
+                     # one hash per column, so a mismatch says which columns changed rather than just 'the hash differs'
+                     "column_sha256": {c: hashlib.sha256("\n".join(df[c]).encode("utf-8")).hexdigest()[:12] for c in df.columns}}
     b = pd.read_csv(first_existing(outputs_dir, FILES["buildings"][0]), dtype=str).fillna("")
     out["counts"] = {
         "by_source": b["Source"].value_counts().sort_index().to_dict(),
@@ -51,16 +54,19 @@ def describe(outputs_dir):
     return out
 
 
-def compare(outputs_dir, baseline_path):
+def compare(outputs_dir, baseline_path, drop=VOLATILE):
     """Return a list of human-readable differences (empty list = identical)."""
     base = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
-    now = describe(outputs_dir)
+    now = describe(outputs_dir, drop)
     diffs = []
     for name in FILES:
         for field in ("rows", "columns", "sha256"):
             if base[name][field] != now[name][field]:
                 what = "" if field == "sha256" else f" (baseline {base[name][field]} vs now {now[name][field]})"
                 diffs.append(f"{name}: {field} differs{what if field != 'columns' else ''}")
+        if base[name]["sha256"] != now[name]["sha256"] and "column_sha256" in base[name]:
+            changed = [c for c, h in now[name]["column_sha256"].items() if base[name]["column_sha256"].get(c) != h]
+            diffs.append(f"{name}: columns that differ: {', '.join(changed)}")
     if base["counts"] != now["counts"]:
         diffs.append("summary counts differ")
     return diffs

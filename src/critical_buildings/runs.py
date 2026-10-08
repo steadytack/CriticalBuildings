@@ -65,14 +65,21 @@ def load_previous(area):
 
 
 # ------------------------------------------------------------------ lifecycle
-def new_run_id(area):
-    return dt.datetime.now().strftime("%Y%m%dT%H%M%S") + "_" + area  # noqa: DTZ005 - local time is intended
+def new_run_id(area, taken=lambda run_id: False, now=None):
+    """<YYYYMMDDTHHMMSS>_<area>. A second run started within the same second would get the same id, so while `taken(id)` says
+    the id is in use the time is moved on a second at a time (ids stay in start order)."""
+    when = now or dt.datetime.now()  # noqa: DTZ005 - local time is intended
+    run_id = when.strftime("%Y%m%dT%H%M%S") + "_" + area
+    while taken(run_id):
+        when += dt.timedelta(seconds=1)
+        run_id = when.strftime("%Y%m%dT%H%M%S") + "_" + area
+    return run_id
 
 
 def start(store, area, run_type, rules, notes="", previous_run_id=None, user=None):
     if run_type not in ("dev", "candidate"):
         raise ControlError("A run is 'dev' or 'candidate'; use the release command to make a release.")
-    run_id = new_run_id(area)
+    run_id = new_run_id(area, lambda r: run_dir(area, r).exists() or store.get_run(r) is not None)
     dest = run_dir(area, run_id)
     dest.mkdir(parents=True)
     ctx = RunContext(run_id, area, run_type, now(), dest, previous_run_id)

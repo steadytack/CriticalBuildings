@@ -233,3 +233,11 @@ def test_a_run_left_running_by_a_dead_process_can_be_closed(isolated_paths, stor
     row = store.get_run("R1")
     assert row["status"] == "failed" and "stopped" in row["error"] and not runs.run_dir("suffolk", "R1").exists()
     assert runs.abandon(store, "suffolk", "R1") is False            # already closed
+
+
+def test_two_runs_started_in_the_same_second_get_different_ids(isolated_paths, store):
+    when = dt.datetime(2026, 10, 5, 12, 0, 0)  # noqa: DTZ001 - run ids use naive local time
+    first = runs.new_run_id("suffolk", now=when)
+    assert first == "20261005T120000_suffolk"
+    assert runs.new_run_id("suffolk", lambda r: r == first, now=when) == "20261005T120001_suffolk"
+    assert runs.new_run_id("suffolk", lambda r: r in (first, "20261005T120001_suffolk"), now=when) == "20261005T120002_suffolk"
