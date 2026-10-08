@@ -4,6 +4,7 @@ import functools
 import http.server
 import json
 import threading
+import zipfile
 
 import pytest
 
@@ -160,9 +161,16 @@ def test_os_layers_are_read_straight_from_the_zips(isolated_paths):
     snap = paths.bronze_source_dir("os_open_map_local", "suffolk") / "2026-10-01"
     snap.mkdir(parents=True)
     sources.set_latest("os_open_map_local", "2026-10-01", "suffolk")
+    for tile, layers in (("tl", ("ImportantBuilding", "RailwayStation")), ("tm", ("ImportantBuilding",))):     # tm has no railway station
+        with zipfile.ZipFile(snap / f"opmplc_essh_{tile}.zip", "w") as z:
+            for layer in layers:
+                z.writestr(f"OS OpenMap Local (ESRI Shape File) {tile.upper()}/data/{tile.upper()}_{layer}.shp", b"")
     got = paths.os_layer_paths("ImportantBuilding", tiles=("tl", "tm"), area="suffolk")
     assert got[0].startswith("zip://") and got[0].endswith("!OS OpenMap Local (ESRI Shape File) TL/data/TL_ImportantBuilding.shp")
     assert got[1].endswith("TM/data/TM_ImportantBuilding.shp") and len(got) == 2
+    only_tl = paths.os_layer_paths("RailwayStation", tiles=("tl", "tm"), area="suffolk")        # a tile without the layer is skipped
+    assert len(only_tl) == 1 and only_tl[0].endswith("TL/data/TL_RailwayStation.shp")
+    assert paths.os_layer_paths("Building", tiles=("tl", "tm"), area="suffolk") == []
 
 
 def test_the_cqc_link_is_found_on_the_page():
@@ -298,3 +306,25 @@ def test_an_unknown_source_name_is_refused_before_anything_is_fetched():
     from critical_buildings.errors import PipelineError
     with pytest.raises(PipelineError, match=r"Unknown source\(s\): dfa"):
         sources.fetch_all(type("R", (), {"tags": []})(), "suffolk", only=["osm", "dfa"], dry_run=True)
+
+
+def test_a_pbf_download_must_look_like_openstreetmap_data(tmp_path):
+    good, bad = tmp_path / "ok.osm.pbf", tmp_path / "bad.osm.pbf"
+    good.write_bytes(b"\x00\x00\x00\x0d\x0a\x09OSMHeader\x18" + b"x" * 100)
+    bad.write_bytes(b"<html>an error page</html>" + b"x" * 100)
+    sources.validate_download(good)
+    with pytest.raises(sources.BadDownload, match="not an OpenStreetMap PBF"):
+        sources.validate_download(bad)
+
+
+def test_only_areas_with_an_osm_extract_fetch_it(monkeypatch):
+    from critical_buildings.errors import PipelineError
+    assert sources.uses_extract("england") and not sources.uses_extract("suffolk")
+    rules = type("R", (), {"tags": []})()
+    with pytest.raises(PipelineError, match="no osm_extract setting"):
+        sources.fetch_osm_extract("suffolk", dry_run=True)
+    res = sources.fetch_all(rules, "england", only=["osm", "osmx"], dry_run=True)
+    assert res["osmx"] == {"status": "dry-run", "files": ["extract.osm.pbf"]}
+    assert res["osm"]["files"] == ["area_boundary.json"]                       # an extract area asks Overpass only for its boundary
+    assert sources.fetch_all(rules, "suffolk", only=["osm"], dry_run=True)["osm"]["files"] == [
+        "osm_features.json", "osm_area_buildings.json", "area_boundary.json"]

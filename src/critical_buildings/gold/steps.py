@@ -95,9 +95,18 @@ def assign_site_ids(recs, sites, today, store, run_id, pending=None):
     created = dict(zip(reg.site_id, reg.created, strict=False))
     nxt = (reg.site_id.str[5:].astype(int).max() + 1) if len(reg) else 1
     taken, mapping = set(), {}
+    # The Site IDs the buildings of each site had last time, collected for every site in one pass (a mask over all the buildings
+    # for each of 80,000 sites was the slowest step of a national run).
+    previous = recs["Building ID"].map(old_site)
+    known = previous.notna()
+    votes_by_site = previous[known].groupby(recs.site_group[known], sort=False).agg(list).to_dict()
     for g, _n in sites.sort_values("n_buildings", ascending=False)[["site_group", "n_buildings"]].itertuples(index=False):
-        votes = pd.Series([old_site.get(b) for b in recs.loc[recs.site_group == g, "Building ID"]]).dropna()
-        sid = next((v for v in votes.value_counts().index if v not in taken), None)
+        votes = votes_by_site.get(g, [])
+        if len(set(votes)) > 1:            # a real vote: most buildings first (ties as pandas orders them)
+            ranked = list(pd.Series(votes).value_counts().index)
+        else:
+            ranked = votes[:1]
+        sid = next((v for v in ranked if v not in taken), None)
         if sid is None:
             sid = f"SITE-{nxt:06d}"
             nxt += 1

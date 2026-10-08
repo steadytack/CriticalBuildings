@@ -76,7 +76,8 @@ published at reduced precision.
 
 ## Known limitations and roadmap
 
-- One pilot area (Suffolk); other areas are config-only but untested.
+- Two areas have been run (Suffolk and England); other areas are config-only. England reads OpenStreetMap from an extract, which drops
+  the few features mapped as open ways.
 - Importance is by building type, not per building. The quality score is a heuristic, not a probability.
 - UPRN counts and the DESNZ/BUUK columns are reserved but empty (UPRN open data not yet added).
 - `Closed per register` means the registered organisation closed; the building may still be in use.

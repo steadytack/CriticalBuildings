@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import shutil
+import zipfile
 from pathlib import Path
 
 ROOT = Path(os.environ.get("CB_ROOT") or Path(__file__).resolve().parents[2])
@@ -63,10 +64,19 @@ def scoped_area(source, area):
 
 
 def os_layer_paths(layer, tiles=("tg", "tl", "tm"), pin=None, area=DEFAULT_AREA):
-    """GDAL paths to an OS Open Map Local layer, read straight from the downloaded zips (no extraction)."""
+    """GDAL paths to an OS Open Map Local layer, read straight from the downloaded zips (no extraction).
+
+    A tile that has no features of a kind leaves that layer out of its zip (the Isles of Scilly have no railway station), so
+    tiles without the layer are skipped."""
     snap = bronze_snapshot("os_open_map_local", scoped_area("os_open_map_local", area), pin=pin)
-    return [f"zip://{(snap / OS_TILE_ZIP.format(tile=t)).as_posix()}!"
-            + OS_TILE_INNER.format(TILE=t.upper(), layer=layer) for t in tiles]
+    out = []
+    for t in tiles:
+        zpath = snap / OS_TILE_ZIP.format(tile=t)
+        inner = OS_TILE_INNER.format(TILE=t.upper(), layer=layer)
+        with zipfile.ZipFile(zpath) as z:
+            if inner in z.namelist():
+                out.append(f"zip://{zpath.as_posix()}!{inner}")
+    return out
 
 
 # ------------------------------------------------------------------ keys / silver

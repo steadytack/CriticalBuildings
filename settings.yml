@@ -112,6 +112,19 @@ areas:
 
     crs: 27700        # British National Grid - all processing happens in this CRS
 
+  england:
+    name: England
+    description: The whole of England. OpenStreetMap comes from the Geofabrik extract, because the Overpass API cannot answer a country-sized query.
+    osm_boundary:
+      ref_gss: E92000001
+      admin_level: 4
+    # Optional: read OpenStreetMap features from a Geofabrik PBF extract (path on download.geofabrik.de, without -latest.osm.pbf)
+    # instead of querying Overpass. Use it for any area bigger than a county.
+    osm_extract: europe/united-kingdom/england
+    # OS 100 km grid squares that touch England (squares that are mostly Wales or Scotland are included because of the border)
+    os_grid_squares: [nt, nu, nx, ny, nz, sd, se, ta, sj, sk, tf, tg, so, sp, tl, tm, ss, st, su, tq, tr, sv, sw, sx, sy, sz, tv]
+    crs: 27700
+
 # ---- Source catalogue: every external dataset. Licence/attribution are copied into each bronze manifest and the
 # published ATTRIBUTION.txt. To add a source: add an entry, a fetcher in sources.py, and a silver reader.
 sources:
@@ -124,6 +137,17 @@ sources:
     licence: Open Database Licence (ODbL) 1.0
     attribution: "(c) OpenStreetMap contributors"
     uses: Tagged features (amenities, healthcare, emergency ...) and buildings inside port/military/aerodrome areas
+    refresh: monthly
+    owner: data engineering
+
+  osm_extract:
+    name: OpenStreetMap (Geofabrik extract)
+    kind: download
+    area_scoped: true            # one snapshot series per area: osm_extract__<area>; used by areas that set osm_extract
+    url: "https://download.geofabrik.de/{path}-latest.osm.pbf"
+    licence: Open Database Licence (ODbL) 1.0
+    attribution: "(c) OpenStreetMap contributors"
+    uses: The same tagged features as the Overpass route, read from a regional extract; the boundary still comes from Overpass
     refresh: monthly
     owner: data engineering
 

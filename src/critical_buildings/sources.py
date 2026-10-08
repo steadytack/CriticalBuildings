@@ -162,6 +162,10 @@ def validate_download(path, min_elements=1):
     elif suffix in (".zip", ".ods"):
         if not zipfile.is_zipfile(path):
             raise BadDownload("not a valid zip/ods file")
+    elif suffix == ".pbf":
+        with open(path, "rb") as f:
+            if b"OSMHeader" not in f.read(64):
+                raise BadDownload("not an OpenStreetMap PBF file")
     else:
         with open(path, "rb") as f:
             head = f.read(512).lstrip().lower()
@@ -279,9 +283,26 @@ def fetch_osm(rules, area="suffolk", dry_run=False):
     area_cfg = config.load_area(area)
     osm_tags = sorted({(t.key, t.value) for t in rules.tags if t.source == "OSM"})
     queries = build_queries(area_cfg, osm_tags)
+    if area_cfg.get("osm_extract"):             # the features come from the extract (fetch_osm_extract); only the boundary is queried
+        queries = {"area_boundary.json": queries["area_boundary.json"]}
     specs = [{"name": name, "url": OVERPASS, "post_data": {"data": q}} for name, q in queries.items()]
     return snapshot("osm_overpass", specs, area=area, dry_run=dry_run,
                              note=f"Query built from {len(osm_tags)} active OSM rule tags")
+
+
+def uses_extract(area):
+    """True when the area reads OpenStreetMap from a Geofabrik extract instead of the Overpass API (settings.yml: osm_extract)."""
+    return bool(config.load_area(area).get("osm_extract"))
+
+
+def fetch_osm_extract(area="suffolk", dry_run=False):
+    """The Geofabrik PBF extract named by the area's osm_extract setting."""
+    path = config.load_area(area).get("osm_extract")
+    if not path:
+        raise PipelineError(f"Area '{area}' reads OpenStreetMap from the Overpass API: it has no osm_extract setting in settings.yml.")
+    url = load_sources()["osm_extract"]["url"].format(path=path)
+    return snapshot("osm_extract", [{"name": "extract.osm.pbf", "url": url}], area=area, dry_run=dry_run,
+                    note=f"Geofabrik extract {path}")
 
 
 # ====================================================================================================
@@ -360,7 +381,7 @@ def fetch_nhs(dry_run=False):
 # Fetch everything
 # ====================================================================================================
 
-ALL = ("osm", "os", "codepoint", "dfe", "cqc", "nhs")
+ALL = ("osm", "osmx", "os", "codepoint", "dfe", "cqc", "nhs")      # osmx (the Geofabrik extract) only for areas that set osm_extract
 
 
 def fetch_all(rules, area="suffolk", only=None, dry_run=False):
@@ -369,6 +390,7 @@ def fetch_all(rules, area="suffolk", only=None, dry_run=False):
     A source that cannot be fetched is reported as {"status": "failed", "error": ...} and the rest are still fetched."""
     jobs = {
         "osm": lambda: fetch_osm(rules, area, dry_run),
+        "osmx": lambda: fetch_osm_extract(area, dry_run),
         "os": lambda: fetch_open_map_local(area, dry_run),
         "codepoint": lambda: fetch_codepoint(dry_run),
         "dfe": lambda: fetch_dfe(dry_run),
@@ -380,7 +402,7 @@ def fetch_all(rules, area="suffolk", only=None, dry_run=False):
         raise PipelineError(f"Unknown source(s): {', '.join(unknown)}. Choose from: {', '.join(ALL)}.")
     out = {}
     with nullcontext() if dry_run else locks.pipeline_lock("fetch"):
-        for name in (only or ALL):
+        for name in only or [n for n in ALL if n != "osmx" or uses_extract(area)]:
             log.info("== fetching %s", name)
             try:
                 out[name] = jobs[name]()

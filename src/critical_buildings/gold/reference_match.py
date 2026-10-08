@@ -10,14 +10,21 @@ Verification per site:  Verified | Unverified | Not covered
   Not covered   no reference dataset exists for this building type
 """
 
+import hashlib
+
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
+from pyogrio.raw import open_arrow
 from shapely.geometry import Point
 
 from critical_buildings import config, paths
-from critical_buildings.gold.merge import name_similarity, strict_similarity
+from critical_buildings.gold.merge import (
+    name_similarity,
+    strict_similarity,
+    strict_similarity_at_least,
+)
 from critical_buildings.silver import _norm_pc
 
 
@@ -39,29 +46,49 @@ def match_reference(ref, sites, site_names, categories):
     # plain arrays: indexing the frame row by row for every candidate is far slower than the matching itself
     s_geom, s_type, s_group, s_name = (sites.geometry.to_numpy(), sites["building_type"].to_numpy(),
                                        sites["site_group"].to_numpy(), sites["name"].to_numpy())
+    c = _c()
+    # What is looked up for every register record, worked out once: the name a site is compared under, and which site types a
+    # register type may match (a boolean per distinct site type, not a Python call per candidate site).
+    eff_name = np.array([site_names.get(g, n) for g, n in zip(s_group, s_name, strict=True)], dtype=object)
+    has_name = np.array([bool(n) for n in eff_name])
+    site_types, type_code = np.unique(s_type.astype(str), return_inverse=True)
+    compat_by_type = {}
     matches = []
-    for ri, geom, r_type, r_name in zip(ref.index, ref.geometry, ref.building_type, ref.ref_name, strict=False):
-        cand = sidx.query(geom.buffer(_c().max_distance_m), predicate="intersects")
-        scored = []
-        for ci in cand:
-            if not _compatible(r_type, s_type[ci], categories):
-                continue
-            d = s_geom[ci].distance(geom)
-            sname = site_names.get(s_group[ci], s_name[ci])
-            nm = name_similarity(r_name, sname) if sname else _c().close_min_name   # unnamed site: neutral
-            scored.append((s_group[ci], d, nm, r_type == s_type[ci],
-                           strict_similarity(r_name, sname) if sname else 0.0))
-        near = [x for x in scored if x[1] <= _c().close_m]
-        sole = [x for x in scored if x[3] and x[1] <= _c().sole_exact_m]
-        ok = [x for x in scored
-              if (x[1] <= _c().close_m and (x[2] >= _c().close_min_name or len(near) == 1))
-              or (x[1] <= _c().mid_m and x[2] >= _c().mid_min_name)
-              or (x[1] <= _c().far_name_limit_m and x[2] >= _c().far_min_name)
-              or (x[3] and x[1] <= _c().far_exact_m and x[4] >= 0.9)          # same type, near-identical full name
-              or (len(sole) == 1 and x is sole[0])]
+    for ri, geom, r_type, r_name in zip(ref.index, ref.geometry, ref.building_type, ref.ref_name, strict=True):
+        cand = sidx.query(geom.buffer(c.max_distance_m), predicate="intersects")
+        if r_type not in compat_by_type:
+            compat_by_type[r_type] = np.array([_compatible(r_type, t, categories) for t in site_types])
+        cand = cand[compat_by_type[r_type][type_code[cand]]]
+        if not len(cand):
+            continue
+        dist = shapely.distance(s_geom[cand], geom)
+        same = s_type[cand] == r_type
+        n_near = int((dist <= c.close_m).sum())
+        sole = np.flatnonzero(same & (dist <= c.sole_exact_m))
+        sole_only = sole[0] if len(sole) == 1 else -1
+        names = {}                                       # name similarity, worked out only for the candidates that need it
+
+        def name_sim(j, cand=cand, r_name=r_name, names=names):
+            if j not in names:
+                k = cand[j]
+                names[j] = name_similarity(r_name, eff_name[k]) if has_name[cand[j]] else c.close_min_name   # unnamed site: neutral
+            return names[j]
+
+        ok = []
+        for j in range(len(cand)):
+            d = dist[j]
+            # the first three rules look at the name only within far_name_limit_m: beyond it only the last two can accept
+            near_name = name_sim(j) if d <= c.far_name_limit_m else None
+            if ((d <= c.close_m and (near_name >= c.close_min_name or n_near == 1))
+                    or (d <= c.mid_m and near_name >= c.mid_min_name)
+                    or (d <= c.far_name_limit_m and near_name >= c.far_min_name)
+                    or (same[j] and d <= c.far_exact_m and has_name[cand[j]]            # same type, near-identical full name
+                        and strict_similarity_at_least(r_name, eff_name[cand[j]], 0.9))
+                    or j == sole_only):
+                ok.append(j)
         if ok:
-            best = max(ok, key=lambda x: x[2] + (1 - min(x[1], _c().far_name_limit_m) / _c().far_name_limit_m) * 0.6)
-            matches.append((ri, best[0], best[1], best[2]))
+            best = max(ok, key=lambda j: name_sim(j) + (1 - min(dist[j], c.far_name_limit_m) / c.far_name_limit_m) * 0.6)
+            matches.append((ri, s_group[cand[best]], dist[best], name_sim(best)))
     return matches
 
 
@@ -85,6 +112,9 @@ class _Candidates:
         self.closed_geom = self.closed.geometry.to_numpy()
         self.valid = ref_valid
         self.valid_geom = ref_valid.geometry.to_numpy()
+        # spatial indexes: asking which records are within reach must not cost a pass over every record in the country
+        self.closed_tree = shapely.STRtree(self.closed_geom)
+        self.valid_tree = shapely.STRtree(self.valid_geom)
 
 
 def explain_unverified(site, ref_all, ref_valid, categories, candidates=None):
@@ -92,19 +122,24 @@ def explain_unverified(site, ref_all, ref_valid, categories, candidates=None):
 
     `candidates` (a _Candidates) lets a caller explaining many sites build the record arrays once."""
     cand = candidates or _Candidates(ref_all, ref_valid)
-    name = site["name"] if isinstance(site["name"], str) else ""
-    if name and site.building_type in _c().school_types:
-        near = np.flatnonzero(shapely.distance(site.geometry, cand.closed_geom) <= _c().conflict_m)
+    return _explain(site["name"], site.building_type, site.geometry, categories, cand)
+
+
+def _explain(site_name, building_type, geometry, categories, cand):
+    """explain_unverified for a site given as plain values."""
+    name = site_name if isinstance(site_name, str) else ""
+    if name and building_type in _c().school_types:
+        near = np.sort(cand.closed_tree.query(geometry, predicate="dwithin", distance=_c().conflict_m))
         for k in near:                   # only the closed schools within reach, in register order
             r = cand.closed.iloc[k]
             if strict_similarity(r.ref_name, name) >= 0.9:
                 return "Closed per register", f"DfE GIAS lists '{r.ref_name}' (URN {r.ref_id}) as closed"
     best = None
-    dist = shapely.distance(site.geometry, cand.valid_geom)
-    for k in np.flatnonzero(~(dist > 300)):          # records within 300 m, in register order
-        r, d = cand.valid.iloc[k], dist[k]
+    within = np.sort(cand.valid_tree.query(geometry, predicate="dwithin", distance=300))      # records within 300 m, in register order
+    for k, d in zip(within, shapely.distance(geometry, cand.valid_geom[within]), strict=True):
+        r = cand.valid.iloc[k]
         nm = name_similarity(r.ref_name, name) if name else 0
-        if (nm >= 0.3 or _compatible(r.building_type, site.building_type, categories)) \
+        if (nm >= 0.3 or _compatible(r.building_type, building_type, categories)) \
                 and (best is None or nm - d / 1000 > best[0]):
             best = (nm - d / 1000, r, d, nm)
     if best:
@@ -114,22 +149,45 @@ def explain_unverified(site, ref_all, ref_valid, categories, candidates=None):
     return "Unverified", "No authoritative record found within 300 m"
 
 
-def building_footprints(boundary, area=paths.DEFAULT_AREA):
-    """OS Open Map Local Building polygons for the area (cached, used to give authoritative points a footprint)."""
+def _empty_footprints():
+    return gpd.GeoDataFrame({"ID": []}, geometry=[], crs=27700)
+
+
+def building_footprints(boundary, points, area=paths.DEFAULT_AREA, near=None):
+    """The OS Open Map Local Building polygons within `near` metres of any of `points`, in file order.
+
+    Only these are needed (to give register points a footprint), and a country has tens of millions of buildings, so each tile's
+    Building layer is streamed in batches and only the polygons near a point are kept: memory stays small whatever the area.
+    The result is cached under the points it was made for, so a rerun with the same register data does not read the tiles again."""
+    near = _c().snap_m if near is None else near
+    if not len(points):
+        return _empty_footprints()
+    coords = np.round(np.array([(p.x, p.y) for p in points]), 1)
+    name = "os_buildings_near_" + hashlib.sha256(coords.tobytes() + str(near).encode()).hexdigest()[:12] + ".gpkg"
     inputs = [("os_open_map_local", None), ("osm_overpass", "area_boundary.json")]     # the footprints and the boundary they are clipped to
-    cache = paths.conformed_lookup(area, "os_buildings.gpkg", inputs)
+    cache = paths.conformed_lookup(area, name, inputs)
     if cache is not None:
         return gpd.read_file(cache)
-    cache = paths.silver_conformed_dir(area) / "os_buildings.gpkg"
-    frames = []
+    zones = shapely.STRtree(shapely.buffer(np.asarray(points, dtype=object), near, quad_segs=16))     # quad_segs=16: what Geometry.buffer() uses
+    wanted = tuple(shapely.total_bounds(zones.geometries))
+    kept = []
     for f in paths.os_layer_paths("Building", tiles=sorted(config.load_area(area)["os_grid_squares"]), area=area):
-        g = gpd.read_file(f, columns=["ID"], bbox=tuple(boundary.bounds))
-        frames.append(g)
-    b = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs=27700)
-    b["geometry"] = b.geometry.force_2d()
-    b = b[b.geometry.representative_point().within(boundary)]
-    b.to_file(cache, driver="GPKG")
-    paths.conformed_stamp(area, "os_buildings.gpkg", inputs)
+        with open_arrow(f, columns=["ID"], bbox=wanted, batch_size=100_000, use_pyarrow=True) as (meta, reader):
+            geom_col = meta["geometry_name"] or "wkb_geometry"
+            for batch in reader:
+                frame = batch.to_pandas()
+                geoms = shapely.force_2d(shapely.from_wkb(frame[geom_col].to_numpy()))
+                hit = np.unique(zones.query(geoms, predicate="intersects")[0])
+                if len(hit):
+                    kept.append(gpd.GeoDataFrame({"ID": frame["ID"].to_numpy()[hit]}, geometry=geoms[hit], crs=27700))
+    if not kept:
+        return _empty_footprints()
+    b = gpd.GeoDataFrame(pd.concat(kept, ignore_index=True), crs=27700)
+    b = b[b.geometry.representative_point().within(boundary)].reset_index(drop=True)
+    if b.empty:
+        return _empty_footprints()
+    b.to_file(paths.silver_conformed_dir(area) / name, driver="GPKG")
+    paths.conformed_stamp(area, name, inputs)
     return b
 
 
@@ -199,7 +257,13 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
         mdf = pd.concat([mdf, pd.DataFrame(conflicts, columns=mdf.columns)], ignore_index=True)
     conflict_sites = {c[1]: c[0] for c in conflicts}
     matched_refs = set(mdf.ri)
-    by_site = {g: ref.loc[grp.ri] for g, grp in mdf.groupby("site_group")}
+    # What was a DataFrame per site (80,000 .loc lookups) is a list of positions into the register arrays.
+    ref_cols = {c: ref[c].to_numpy() for c in ("ref_source", "ref_id", "ref_name", "status", "detail", "rating", "provider",
+                                              "postcode", "uprn", "ods_code", "capacity", "capacity_unit", "building_type")}
+    ref_pos = {label: i for i, label in enumerate(ref.index)}
+    by_site = {}                   # site_group -> positions in `ref` of its matched register records, in match order
+    for g, label in zip(mdf.site_group, mdf.ri, strict=True):
+        by_site.setdefault(g, []).append(ref_pos[label])
 
     recs = recs.copy()
     recs["classification_note"] = ""
@@ -210,43 +274,52 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     for t in sorted(tags, key=lambda t: (t.priority, t.rule_ref)):
         rule_for.setdefault(t.building_type, t)
 
+    # positions of each site's buildings and of the site's own row, so that changing one site does not scan every building
+    rec_rows = recs.groupby("site_group").indices
+    rcol = {c: recs.columns.get_loc(c) for c in recs.columns}
+    site_row = {g: i for i, g in enumerate(sites.site_group)}
+    scol = {c: sites.columns.get_loc(c) for c in sites.columns}
+
+    def set_site(g, rec_values=(), site_values=()):
+        for c, v in rec_values:
+            recs.iloc[rec_rows[g], rcol[c]] = v
+        for c, v in site_values:
+            sites.iloc[site_row[g], scol[c]] = v
+
     for g, ri in conflict_sites.items():
         r = ref.loc[ri]
-        old_type = sites.loc[sites.site_group == g, "building_type"].iloc[0]
+        old_type = sites.iloc[site_row[g], scol["building_type"]]
         rule = rule_for.get(r.building_type)
         if rule is None:
             continue
-        mask = recs.site_group == g
-        recs.loc[mask, ["category", "building_type", "importance", "driver", "rule_ref", "rule_notes"]] = [
-            rule.category, rule.building_type, rule.importance, rule.driver, rule.rule_ref, rule.notes]
-        recs.loc[mask, "classification_note"] = (
-            f"Building Type set from {r.ref_source} ({r.ref_name}); OS/OSM said {old_type}")
-        recs.loc[mask, "review"] = ""
-        sites.loc[sites.site_group == g, ["building_type", "category", "importance"]] = [
-            rule.building_type, rule.category, rule.importance]
+        set_site(g, [("category", rule.category), ("building_type", rule.building_type), ("importance", rule.importance),
+                     ("driver", rule.driver), ("rule_ref", rule.rule_ref), ("rule_notes", rule.notes),
+                     ("classification_note", f"Building Type set from {r.ref_source} ({r.ref_name}); OS/OSM said {old_type}"),
+                     ("review", "")],
+                 [("building_type", rule.building_type), ("category", rule.category), ("importance", rule.importance)])
 
     # ---- the school type settled by DfE: where DfE says every matched school at a site is one type, use it ----
-    for g, rr in by_site.items():
-        dfe_types = set(rr[rr.ref_source == "DfE GIAS"].building_type)
-        site_row = sites.loc[sites.site_group == g]
-        if len(dfe_types) != 1 or site_row.empty:
+    site_type = dict(zip(sites.site_group, sites["building_type"], strict=True))
+    loose = config.get().matching.loose_categories
+    for g, rows in by_site.items():
+        dfe_types = {ref_cols["building_type"][i] for i in rows if ref_cols["ref_source"][i] == "DfE GIAS"}
+        if len(dfe_types) != 1 or g not in site_type:
             continue
-        new_type, old_type = next(iter(dfe_types)), site_row.building_type.iloc[0]
-        loose = config.get().matching.loose_categories
+        new_type, old_type = next(iter(dfe_types)), site_type[g]
         if (new_type == old_type or new_type not in rule_for or categories.get(new_type) not in loose
                 or categories.get(old_type) != categories.get(new_type)):
             continue
         if rule_for[new_type].priority > rule_for.get(old_type, rule_for[new_type]).priority:
             continue          # DfE only says 'School' (e.g. independent schools): keep the more specific OS/OSM type
         rule = rule_for[new_type]
-        mask = recs.site_group == g
-        recs.loc[mask, ["building_type", "importance", "driver", "rule_ref", "rule_notes"]] = [
-            rule.building_type, rule.importance, rule.driver, rule.rule_ref, rule.notes]
-        recs.loc[mask, "classification_note"] = f"Building Type set from DfE GIAS; OS/OSM said {old_type}"
-        recs.loc[mask, "review"] = recs.loc[mask, "review"].map(
+        review = recs.iloc[rec_rows[g], rcol["review"]].map(
             lambda t: "; ".join(x for x in str(t).split("; ") if x and not x.startswith("OS rule")))
-        sites.loc[sites.site_group == g, "building_type"] = new_type
-        sites.loc[sites.site_group == g, "importance"] = rule.importance
+        set_site(g, [("building_type", rule.building_type), ("importance", rule.importance), ("driver", rule.driver),
+                     ("rule_ref", rule.rule_ref), ("rule_notes", rule.notes),
+                     ("classification_note", f"Building Type set from DfE GIAS; OS/OSM said {old_type}")],
+                 [("building_type", new_type), ("importance", rule.importance)])
+        recs.iloc[rec_rows[g], rcol["review"]] = review.to_numpy()
+        site_type[g] = new_type
 
     # a site confirmed by an authoritative source settles record-level merge doubts
     verified = set(by_site)
@@ -259,7 +332,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
     new_recs, new_sites = [], []
     next_group = int(sites.site_group.max()) + 1 if len(sites) else 1
     if len(gaps):
-        blds = building_footprints(boundary, area)
+        blds = building_footprints(boundary, list(gaps.geometry), area)
         bs = blds.sindex
         blds_geom = blds.geometry.to_numpy()
         os_name, os_type = orig_sites["name"].to_numpy(), orig_sites["building_type"].to_numpy()
@@ -292,7 +365,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
                                   "category": rule.category, "importance": rule.importance, "n_buildings": 1,
                                   "method": "Authoritative source",
                                   "geometry": geom if geom.geom_type != "Point" else geom.buffer(15)})
-            by_site[next_group] = ref.loc[[ri]]
+            by_site[next_group] = [ref_pos[ri]]
             next_group += 1
     if new_recs:
         nr = gpd.GeoDataFrame(new_recs, geometry="geometry", crs=27700)
@@ -319,32 +392,36 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
         site_pos.setdefault(g, pos)
     new_groups = {x["site_group"] for x in new_sites}
     explain_on = _Candidates(ref_all if ref_all is not None else ref, ref)
+    s_type, s_name, s_geom = sites["building_type"].to_numpy(), sites["name"].to_numpy(), sites.geometry.to_numpy()
+
+    def values(column, rows):
+        return [ref_cols[column][i] for i in rows]
+
     for g in sites.site_group:
-        rr = by_site.get(g)
-        stype = sites["building_type"].iloc[site_pos[g]]
-        if rr is None or not len(rr):
+        rows = by_site.get(g)
+        stype = s_type[site_pos[g]]
+        if not rows:
             if stype not in covered:
                 info[g] = {"Verification": "Not covered"}
             elif g in moved_notes:
                 info[g] = {"Verification": "Unverified", "Verification Note": moved_notes[g]}
             else:
-                srow = sites.iloc[site_pos[g]]
-                v, note = explain_unverified(srow, ref_all if ref_all is not None else ref, ref, categories, explain_on)
+                v, note = _explain(s_name[site_pos[g]], stype, s_geom[site_pos[g]], categories, explain_on)
                 info[g] = {"Verification": v, "Verification Note": note}
             continue
-        cap_units = rr.capacity_unit.replace("", pd.NA).dropna().unique()
-        cap = rr.capacity.dropna().astype(float).sum() if len(cap_units) == 1 else None
+        cap_units = list(dict.fromkeys(u for u in values("capacity_unit", rows) if isinstance(u, str) and u != ""))
+        cap = sum(float(c) for c in values("capacity", rows) if not pd.isna(c)) if len(cap_units) == 1 else None
         info[g] = {
             "Verification": "Verified" if g not in new_groups else "Authoritative only",
             "Verification Note": kept_notes.get(g) or (f"Matched {offset[g]:.0f} m from the authoritative point"
                                                        if offset.get(g, 0) > _c().close_m else ""),
             "Authoritative Distance (m)": offset.get(g),
-            "Authoritative Source": _join(rr.ref_source), "Authoritative ID": _join(rr.ref_id),
-            "Authoritative Name": _join(rr.ref_name), "Authoritative Status": _join(rr.status),
+            "Authoritative Source": _join(values("ref_source", rows)), "Authoritative ID": _join(values("ref_id", rows)),
+            "Authoritative Name": _join(values("ref_name", rows)), "Authoritative Status": _join(values("status", rows)),
             "Capacity": int(cap) if cap else None, "Capacity Unit": cap_units[0] if len(cap_units) == 1 and cap else "",
-            "Authoritative Detail": _join(rr.detail), "CQC Rating": _join(rr.rating),
-            "Operator / Trust": _join(rr.provider), "Authoritative Postcode": _join(rr.postcode),
-            "UPRN": _join(rr.uprn), "ODS Code": _join(rr.ods_code),
+            "Authoritative Detail": _join(values("detail", rows)), "CQC Rating": _join(values("rating", rows)),
+            "Operator / Trust": _join(values("provider", rows)), "Authoritative Postcode": _join(values("postcode", rows)),
+            "UPRN": _join(values("uprn", rows)), "ODS Code": _join(values("ods_code", rows)),
         }
     cols = ["Verification", "Verification Note", "Authoritative Distance (m)", "Authoritative Source", "Authoritative ID", "Authoritative Name", "Authoritative Status",
             "Capacity", "Capacity Unit", "Authoritative Detail", "CQC Rating", "Operator / Trust",

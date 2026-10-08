@@ -15,19 +15,22 @@ def assign_roles(recs, settings):
     recs = recs.copy()
     area = recs.geometry.area
     is_point = recs.geometry.geom_type.isin(["Point", "MultiPoint"])
-    nb = recs.site_group.map(recs.site_group.value_counts())
+    # plain arrays: a row at a time through recs.loc[i] was the third slowest step of a national run
+    areas, points = area.to_numpy(), is_point.to_numpy()
+    nb = recs.site_group.map(recs.site_group.value_counts()).to_numpy()
+    btags = [v if isinstance(v, str) else "" for v in recs.osm_building]
+    minimums = [settings["per_type"].get(t, settings["min_area"]) for t in recs.building_type]
+    methods = recs.method.to_numpy()
     role, reason = [], []
-    for i in recs.index:
-        r = recs.loc[i]
-        btag = r.osm_building if isinstance(r.osm_building, str) else ""
-        minimum = settings["per_type"].get(r.building_type, settings["min_area"])
-        if r.method == "OSM area (no buildings)":
+    for i in range(len(recs)):
+        btag, minimum = btags[i], minimums[i]
+        if methods[i] == "OSM area (no buildings)":
             role.append("Whole site")
             reason.append("Record is the site area itself (no buildings found inside)")
         elif nb[i] == 1:
             role.append("Standalone")
             reason.append("Only building at this site")
-        elif is_point[i]:
+        elif points[i]:
             role.append("Unknown")
             reason.append("Point feature with no footprint")
         elif btag in settings["ancillary"]:
@@ -36,12 +39,12 @@ def assign_roles(recs, settings):
         elif btag in settings["primary"]:
             role.append("Primary")
             reason.append(f"OSM building={btag}")
-        elif area[i] >= minimum:
+        elif areas[i] >= minimum:
             role.append("Primary")
-            reason.append(f"Footprint {area[i]:.0f} m2 is at least {minimum:.0f} m2")
+            reason.append(f"Footprint {areas[i]:.0f} m2 is at least {minimum:.0f} m2")
         else:
             role.append("Ancillary")
-            reason.append(f"Footprint {area[i]:.0f} m2 is under {minimum:.0f} m2")
+            reason.append(f"Footprint {areas[i]:.0f} m2 is under {minimum:.0f} m2")
     recs["role"] = role
     recs["role_reason"] = reason
 

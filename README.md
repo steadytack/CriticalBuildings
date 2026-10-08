@@ -5,7 +5,8 @@ authoritative registers (DfE schools, CQC care and health, NHS organisations). E
 hospital, primary school ...), an operational importance, the site it belongs to, a role within that site, and a data
 quality score. Every number can be traced back to its source and to the rules that produced it.
 
-The pilot area is **Suffolk** (about 3,500 buildings in about 1,100 sites). More areas are a config file away
+The pilot area is **Suffolk** (about 3,500 buildings in about 1,100 sites). **England** runs too, in about 11 minutes: about 203,000
+buildings in about 78,600 sites (see [running the whole of England](docs/guide.md#running-the-whole-of-england)). More areas are a config file away
 (see [adding an area](docs/guide.md#adding-an-area-or-a-source)).
 
 ## What you get
@@ -127,7 +128,7 @@ NHS Organisation Data Service (OGL). Each release includes the exact attribution
 
 ## Status and known limitations
 
-Pilot quality, one area. Importance comes from the rules by building type, not from an assessment of each building.
+Pilot quality: Suffolk and England have been run, other areas are untested. Importance comes from the rules by building type, not from an assessment of each building.
 UPRN counts and the DESNZ/BUUK columns are reserved but not populated. The full list is in the data dictionary
 (*Known limitations*) and [docs/governance.md](docs/governance.md#known-limitations-and-roadmap).
 

@@ -19,16 +19,27 @@ from critical_buildings import config, pipeline, silver
 BASELINE = Path(__file__).parent / "golden" / "synthetic.json"
 
 
+def _synthetic(isolated_paths, seeded_store, monkeypatch, extract):
+    raw = config._raw
+    area = synthetic_area.area_config(extract)
+    monkeypatch.setattr(config, "_raw", lambda path=None: {**raw(path), "areas": {**raw(path)["areas"], synthetic_area.AREA: area}})
+    silver._postcode_table.cache_clear()
+    synthetic_area.build_bronze(isolated_paths / "work", extract)
+    seeded_store.publish("tester", "synthetic area rules")
+    return seeded_store
+
+
 @pytest.fixture
 def synthetic(isolated_paths, seeded_store, monkeypatch):
     """Bronze data for the synthetic area in a temp data folder, the area registered, and a published rule set."""
-    raw = config._raw
-    monkeypatch.setattr(config, "_raw", lambda path=None: {**raw(path), "areas": {**raw(path)["areas"],
-                                                                                     synthetic_area.AREA: synthetic_area.area_config()}})
+    yield _synthetic(isolated_paths, seeded_store, monkeypatch, extract=False)
     silver._postcode_table.cache_clear()
-    synthetic_area.build_bronze(isolated_paths / "work")
-    seeded_store.publish("tester", "synthetic area rules")
-    yield seeded_store
+
+
+@pytest.fixture
+def synthetic_extract(isolated_paths, seeded_store, monkeypatch):
+    """The same area, but OpenStreetMap comes from an extract file (the route used for whole countries)."""
+    yield _synthetic(isolated_paths, seeded_store, monkeypatch, extract=True)
     silver._postcode_table.cache_clear()
 
 
@@ -76,3 +87,23 @@ def test_each_synthetic_case_comes_out_as_designed(synthetic):
     assert sorted(sites["Site Type"]) == ["Fire Station", "Primary School", "Primary School", "School"]
     assert int(sites.set_index("Site Name").loc["Oak Primary School", "Buildings in Site"]) == 2
 
+
+def test_the_extract_route_gives_the_same_dataset_as_the_overpass_route(synthetic_extract):
+    """Reading OpenStreetMap from an extract file must produce exactly the baseline the Overpass JSON route produces."""
+    out = run(synthetic_extract, reuse_silver=False)
+    assert golden_utils.compare(out["dest"], BASELINE, DROP) == []
+
+
+
+
+
+def test_a_second_run_reuses_the_cached_extract_read(synthetic_extract):
+    """Reading a country's extract takes minutes, so it is cached: a rebuild of silver with the same extract and OSM tags (here
+    forced with reuse_silver=False) must not read the file again."""
+    first = run(synthetic_extract, reuse_silver=False)
+    second = run(synthetic_extract, reuse_silver=False)
+    stages = synthetic_extract.stages_df()
+    notes = {r.run_id: json.loads(r.detail_json) for r in stages[stages.stage == "silver"].itertuples()}
+    assert notes[first["run_id"]]["OSM extract read"] == "from the extract file"
+    assert notes[second["run_id"]]["OSM extract read"] == "cached"
+    assert golden_utils.compare(second["dest"], BASELINE, DROP) == []
