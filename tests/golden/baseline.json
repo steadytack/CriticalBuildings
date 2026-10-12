@@ -1,5 +1,79 @@
 {
+  "bronze_key": "2a58bcd1bb46",
   "buildings": {
+    "column_sha256": {
+      "All Matched Rule Refs": "b307cf747a96",
+      "Authoritative Detail": "a1c997f31a5b",
+      "Authoritative Distance (m)": "f0a4cb324113",
+      "Authoritative ID": "3dee50f59b89",
+      "Authoritative Name": "c43cbd122655",
+      "Authoritative Postcode": "67f4d6006996",
+      "Authoritative Source": "e6be95ed8187",
+      "Authoritative Status": "5d212cb43429",
+      "BUUK Catastrophic Risk - Catastrophic Risk Override": "00dd662d932d",
+      "BUUK Catastrophic Risk - Environmental Default": "00dd662d932d",
+      "BUUK Catastrophic Risk - Environmental Override": "00dd662d932d",
+      "BUUK Catastrophic Risk - Public Default": "00dd662d932d",
+      "BUUK Catastrophic Risk - Public Override": "00dd662d932d",
+      "BUUK Catastrophic Risk - Reputational Default": "00dd662d932d",
+      "BUUK Catastrophic Risk - Reputational Override": "00dd662d932d",
+      "Building ID": "04c14679510b",
+      "Building Role": "16b2bbc21068",
+      "Building Role Default": "16b2bbc21068",
+      "Building Role Override": "00dd662d932d",
+      "Building Role Reason": "8f30141448a8",
+      "Building Type": "8ca5e23b3d9e",
+      "Building Type Default": "4903a870bf83",
+      "Building Type Override": "d3e3b7b1c3ef",
+      "Buildings in Site": "8e97ad623114",
+      "CQC Rating": "0b03e34d004b",
+      "Capacity": "1dbd6e5fe067",
+      "Capacity Unit": "6be52264a2c7",
+      "Classification Note": "f34aec005475",
+      "Confidence": "0a2f175db3eb",
+      "Count UPRNs": "00dd662d932d",
+      "Created By": "127205b25536",
+      "Created Date": "ecc0b27b6747",
+      "DESNZ Priority Consumer Category A Default": "00dd662d932d",
+      "DESNZ Priority Consumer Category A Override": "00dd662d932d",
+      "Data Quality Band": "304254426774",
+      "Data Quality Score": "372b2c88453f",
+      "Excluded": "e88380f0f0f1",
+      "Geom": "d51d29488fab",
+      "Last Edit By": "127205b25536",
+      "Latitude": "221594d2ccd6",
+      "Longitude": "b22e695d81f1",
+      "Manual Override Notes": "41347c3a4584",
+      "Match Method": "212d1f9f6f9b",
+      "Name": "7180dbf9dfd8",
+      "ODS Code": "a43f61ee5ea1",
+      "OS Rule Ref": "7628373e5ecb",
+      "OSM Rule Ref": "f8f5dee3e204",
+      "Operational Importance": "2ef1234c1b84",
+      "Operational Importance Default": "2ef1234c1b84",
+      "Operational Importance Driver Default": "770e8c2972e5",
+      "Operational Importance Driver Override": "00dd662d932d",
+      "Operational Importance Override": "00dd662d932d",
+      "Operator / Trust": "9ced76892af0",
+      "Primary Category": "11b5682fdc20",
+      "Primary Category Default": "11b5682fdc20",
+      "Primary Category Override": "00dd662d932d",
+      "Review Decision": "c98ffe1e1791",
+      "Review Reason": "4b0f4f4f34c2",
+      "Review Status": "dd7a7b65ba94",
+      "Rule Notes": "89465b9f548e",
+      "Site ID": "353c1460ebe7",
+      "Site Method": "d8cb9159a842",
+      "Site Name": "1e278bfc7f60",
+      "Site Type": "ce06d64b71df",
+      "Source": "bc2fb0a472e1",
+      "Source Feature ID": "4d695e1e7bef",
+      "UPRN": "ed51cda15286",
+      "UPRNs inside footprint": "00dd662d932d",
+      "Verification": "83f0d315484a",
+      "Verification Note": "1036cd0a7387",
+      "Verification Override": "6b372607f908"
+    },
     "columns": [
       "All Matched Rule Refs",
       "Authoritative Detail",
@@ -74,21 +148,21 @@
       "Verification Override"
     ],
     "file": "buildings.csv",
-    "rows": 3517,
-    "sha256": "788532b6e90baff78a59523a0771b75f0984ace5b379154cae0cf0181e5c0bc9"
+    "rows": 3516,
+    "sha256": "c0984f1cb3e3ccbd0ee7bb0dc6c9129c827ba3a78ebb35d34dfbc207212bbd0e"
   },
   "counts": {
     "by_building_role": {
       "Ancillary": 1333,
       "Primary": 1452,
-      "Standalone": 702,
+      "Standalone": 701,
       "Unknown": 2,
       "Whole site": 28
     },
     "by_quality_band": {
-      "High": 2050,
-      "Low": 282,
-      "Medium": 1185
+      "High": 2097,
+      "Low": 246,
+      "Medium": 1173
     },
     "by_source": {
       "Both": 1234,
@@ -96,18 +170,44 @@
       "DfE GIAS": 17,
       "NHS ODS": 3,
       "OS Important Buildings": 1099,
-      "OSM": 1012
+      "OSM": 1011
     },
     "by_verification": {
       "Authoritative only": 172,
       "Closed per register": 29,
-      "Not covered": 1221,
-      "Unverified": 241,
+      "Not covered": 1308,
+      "Unverified": 153,
       "Verified": 1819,
       "Verified (manual)": 35
     }
   },
   "sites": {
+    "column_sha256": {
+      "Authoritative Detail": "1e67f4b6938d",
+      "Authoritative Distance (m)": "269563c23397",
+      "Authoritative ID": "d8014116980c",
+      "Authoritative Name": "51912f65c07d",
+      "Authoritative Postcode": "3e79e0d32f24",
+      "Authoritative Source": "73817f40700e",
+      "Authoritative Status": "52d3a4232137",
+      "Buildings in Site": "e5fddbe4a4b2",
+      "CQC Rating": "536f76f36d90",
+      "Capacity": "32a54822583a",
+      "Capacity Unit": "e055b7e2968d",
+      "Created Date": "85bb00433c4d",
+      "ODS Code": "acbb445409f5",
+      "Operational Importance": "ff7b182c62a7",
+      "Operator / Trust": "2645b7e8b895",
+      "Primary Buildings": "b096100b5dd3",
+      "Primary Category": "4b3f45f29967",
+      "Site ID": "a4380c843745",
+      "Site Method": "52dd7765408b",
+      "Site Name": "ea3ce60d8a12",
+      "Site Type": "312d6bdb91d4",
+      "UPRN": "f9d8d49a2146",
+      "Verification": "a998486db219",
+      "Verification Note": "59eb83e1cb39"
+    },
     "columns": [
       "Authoritative Detail",
       "Authoritative Distance (m)",
@@ -135,10 +235,29 @@
       "Verification Note"
     ],
     "file": "sites.csv",
-    "rows": 1096,
-    "sha256": "58064e40bdefb0385a0a504ea76b79dded270c21d568382d04ddfeb5c7f226a8"
+    "rows": 1095,
+    "sha256": "4f24ea98306aae2c95fa9679b0f5ec066fa8d8b92b741bc09efb27ebd5882242"
   },
   "summary": {
+    "column_sha256": {
+      "Authoritative Source": "e6be95ed8187",
+      "Building ID": "04c14679510b",
+      "Building Role": "16b2bbc21068",
+      "Building Type": "8ca5e23b3d9e",
+      "Capacity": "1dbd6e5fe067",
+      "Capacity Unit": "6be52264a2c7",
+      "Data Quality Band": "304254426774",
+      "Data Quality Score": "372b2c88453f",
+      "Latitude": "221594d2ccd6",
+      "Longitude": "b22e695d81f1",
+      "Name": "7180dbf9dfd8",
+      "Operational Importance": "2ef1234c1b84",
+      "Primary Category": "11b5682fdc20",
+      "Site ID": "353c1460ebe7",
+      "Site Name": "1e278bfc7f60",
+      "Source": "bc2fb0a472e1",
+      "Verification": "83f0d315484a"
+    },
     "columns": [
       "Authoritative Source",
       "Building ID",
@@ -159,7 +278,7 @@
       "Verification"
     ],
     "file": "buildings.csv",
-    "rows": 3517,
-    "sha256": "0dc2e5ada7d884f7e68e204b7ab8eff70603fde0e1369d3968dceb0ff0985dc3"
+    "rows": 3516,
+    "sha256": "111f85752a977b88f5c69d19cac8ec3a90a381423a818136d205d24cdd175167"
   }
 }

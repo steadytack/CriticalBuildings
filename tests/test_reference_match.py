@@ -68,3 +68,26 @@ def test_prebuilt_candidates_give_the_same_answer_as_building_them_each_time():
     valid = refs(("DfE GIAS", "3", "Greenfield Primary", "Primary School", "Open", point(100, 0)))
     once = rm._Candidates(valid, valid)
     assert rm.explain_unverified(site, valid, valid, CATEGORIES, once) == rm.explain_unverified(site, valid, valid, CATEGORIES)
+
+
+def test_a_closed_school_next_to_an_open_namesake_is_not_reported_closed():
+    """An infant school closed and a primary school of the same name opened beside it (a merger): the open record matched the
+    campus' other building site, so this one is unverified, not closed."""
+    site = sites_of((1, "Sudley Infant School", "Primary School", square(0, 0))).iloc[0]
+    closed = refs(("DfE GIAS", "555", "Sudley Infant School", "IGNORE", "Closed", point(20, 20)))
+    open_ = refs(("DfE GIAS", "556", "Sudley Primary School", "Primary School", "Open", point(120, 0)))
+    verdict, note = rm.explain_unverified(site, closed, open_, CATEGORIES)
+    assert verdict == "Unverified" and "Sudley Primary School" in note and "name match 1.00" in note
+    far = refs(("DfE GIAS", "556", "Sudley Primary School", "Primary School", "Open", point(900, 0)))      # beyond 300 m: no namesake
+    assert rm.explain_unverified(site, closed, far, CATEGORIES)[0] == "Closed per register"
+    other = refs(("DfE GIAS", "557", "Greenfield Primary School", "Primary School", "Open", point(120, 0)))   # open but a different name
+    assert rm.explain_unverified(site, closed, other, CATEGORIES)[0] == "Closed per register"
+    wrong_kind = refs(("CQC", "c1", "Sudley Hospital", "Hospital", "Active", point(120, 0)))                # similar name, other kind
+    assert rm.explain_unverified(site, closed, wrong_kind, CATEGORIES)[0] == "Closed per register"
+
+
+def test_types_the_register_cannot_fully_confirm_show_not_covered():
+    """Nurseries (private ones are not listed) and further / higher education (one register record per institution, but a map
+    site for each of its buildings) are 'Not covered' when nothing matches, rather than 'Unverified'."""
+    from critical_buildings import config
+    assert {"Nursery & Child Care", "Further, Higher & University Education"} <= config.get().reference_match.not_covered

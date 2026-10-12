@@ -125,10 +125,22 @@ def explain_unverified(site, ref_all, ref_valid, categories, candidates=None):
     return _explain(site["name"], site.building_type, site.geometry, categories, cand)
 
 
+def _open_namesake(name, building_type, geometry, categories, cand):
+    """True when an open register record of a compatible type and a similar name is close to the site. Then a closed record of
+    the same name nearby means the school was reorganised (an infant and a junior school merged into a primary), not that the
+    site closed: the open record simply matched the other building site of the campus, because each record matches one site."""
+    c = _c()
+    for k in cand.valid_tree.query(geometry, predicate="dwithin", distance=c.open_namesake_m):
+        r = cand.valid.iloc[k]
+        if _compatible(r.building_type, building_type, categories) and name_similarity(r.ref_name, name) >= c.open_namesake_min_name:
+            return True
+    return False
+
+
 def _explain(site_name, building_type, geometry, categories, cand):
     """explain_unverified for a site given as plain values."""
     name = site_name if isinstance(site_name, str) else ""
-    if name and building_type in _c().school_types:
+    if name and building_type in _c().school_types and not _open_namesake(name, building_type, geometry, categories, cand):
         near = np.sort(cand.closed_tree.query(geometry, predicate="dwithin", distance=_c().conflict_m))
         for k in near:                   # only the closed schools within reach, in register order
             r = cand.closed.iloc[k]

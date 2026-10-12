@@ -75,5 +75,8 @@ def compare(outputs_dir, baseline_path, drop=VOLATILE):
 if __name__ == "__main__":
     import sys
     outputs, target = sys.argv[1], sys.argv[2]
-    Path(target).write_text(json.dumps(describe(outputs), indent=2, sort_keys=True), encoding="utf-8")
+    from critical_buildings import paths
+    # the fingerprint of the source data the baseline was made from: a different one means the baseline is out of date, not the code wrong
+    baseline = {**describe(outputs), "bronze_key": paths.bronze_key("suffolk")}
+    Path(target).write_text(json.dumps(baseline, indent=2, sort_keys=True), encoding="utf-8")
     print("baseline written to", target)

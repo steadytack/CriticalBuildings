@@ -25,6 +25,10 @@ def sandbox(tmp_path, monkeypatch):
     real_control = REPO / "governed" / "control.db"
     if not (REPO / "data" / "bronze" / "dfe_gias").exists() or not real_control.exists() or not BASELINE.exists():
         pytest.skip("real bronze data / control store / baseline not available")
+    baseline_key = json.loads(BASELINE.read_text(encoding="utf-8")).get("bronze_key")
+    if baseline_key and baseline_key != paths.bronze_key("suffolk"):
+        pytest.skip("the Suffolk source data has been refreshed since the baseline was made: review a run, then regenerate it with "
+                    "python tests/golden_utils.py <run folder> tests/golden/baseline.json")
     shutil.copytree(REPO / "governed", tmp_path / "governed")
     monkeypatch.setattr(paths, "CONTROL", tmp_path / "governed")
     monkeypatch.setattr(paths, "DATA", tmp_path / "data")          # the state database, run logs and locks stay in the sandbox
