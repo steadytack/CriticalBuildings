@@ -71,7 +71,12 @@ reference_match:                            # DfE / CQC / NHS ODS records <-> si
   location_review_m: 500                    # a matched site this far from its register point goes to review
   snap_m: 20                                # register points snap to a building footprint this close
   sole_exact_m: 100                         # one same-type site within this distance is accepted whatever its name
-  not_covered: [Nursery & Child Care]       # DfE only lists maintained nurseries, so private ones cannot be verified
+  # Types whose register cannot confirm every site, so an unmatched site shows 'Not covered' rather than 'Unverified'. Nurseries: DfE
+  # lists only maintained ones. Further / higher education: the register has one record per institution (about 420 in England) while OS
+  # and OSM have a site for each university building (about 2,400), so most would be 'Unverified' only because of how they are counted.
+  not_covered: [Nursery & Child Care, "Further, Higher & University Education"]
+  open_namesake_m: 300                      # a closed school is only reported as closed if no open record of a similar name is this close ...
+  open_namesake_min_name: 0.6               # ... 'similar' meaning at least this name similarity (a merged infant + junior school stays open)
   school_types: [Primary School, Secondary School, School, School For Special Needs, Nursery & Child Care]
   stop_words: [the, school, primary, secondary, infant, junior, nursery, academy, church, england, of, c, e, ce, cofe,
                voluntary, controlled, aided, community, college, hospital, care, home, centre, center, surgery,
