@@ -179,6 +179,16 @@ sources:
     refresh: quarterly
     owner: data engineering
 
+  os_open_uprn:
+    name: OS Open UPRN
+    kind: download
+    url: "https://api.os.uk/downloads/v1/products/OpenUPRN/downloads?area=GB&format=CSV&redirect"
+    licence: Open Government Licence v3.0
+    attribution: Contains OS data (c) Crown copyright and database right 2026
+    uses: One point per addressable location (UPRN); the UPRNs inside each site, to link sites to customer and network records
+    refresh: six-monthly (OS release cycle)
+    owner: data engineering
+
   dfe_gias:
     name: DfE Get Information About Schools
     kind: download

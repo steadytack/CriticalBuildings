@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from critical_buildings import config, paths, progress
-from critical_buildings.gold import merge, roles
+from critical_buildings.gold import merge, roles, site_links
 from critical_buildings.gold import reference_match as refmatch
 from critical_buildings.gold import sites as sitelib
 
@@ -331,6 +331,7 @@ class GoldResult:
     new_ids: int
     ref_gaps: object
     ref_matches: object
+    site_uprns: object = None     # DataFrame(Site ID, UPRN): every UPRN inside every site (see gold/site_links.py)
     identities: dict = field(default_factory=dict)    # pending registry writes (see store.commit_identities)
 
 
@@ -356,9 +357,10 @@ def build(silver, rules, store, run_id, today, previous_buildings=None, area=pat
     progress.step("Assigning building roles, applying decisions and scoring quality")
     recs = roles.assign_roles(recs, rules.role)
     df, sites_out = assemble(recs, sites_df, rules.label, today, store)
+    sites_out, site_uprns = site_links.attach(sites_out, area)
     progress.note("buildings (before exclusions)", len(df))
     progress.note("excluded by a decision", int(df.Excluded.sum()))
     progress.step("Comparing with the previous run")
     changes = diff_runs(previous_buildings, df) if previous_buildings is not None else None
     progress.note("changes vs previous run", "no previous run" if changes is None else len(changes))
-    return GoldResult(df, sites_out, sites_df, changes, new_ids, ref_gaps, ref_matches, identities)
+    return GoldResult(df, sites_out, sites_df, changes, new_ids, ref_gaps, ref_matches, site_uprns, identities)

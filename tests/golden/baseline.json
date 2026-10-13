@@ -1,5 +1,5 @@
 {
-  "bronze_key": "2a58bcd1bb46",
+  "bronze_key": "407153fd623b",
   "buildings": {
     "column_sha256": {
       "All Matched Rule Refs": "b307cf747a96",
@@ -198,6 +198,9 @@
       "ODS Code": "acbb445409f5",
       "Operational Importance": "ff7b182c62a7",
       "Operator / Trust": "2645b7e8b895",
+      "Postcode": "3c4c014a285e",
+      "Postcode Distance (m)": "9bc38eb70ecc",
+      "Postcode Method": "88428134738f",
       "Primary Buildings": "b096100b5dd3",
       "Primary Category": "4b3f45f29967",
       "Site ID": "a4380c843745",
@@ -205,6 +208,8 @@
       "Site Name": "ea3ce60d8a12",
       "Site Type": "312d6bdb91d4",
       "UPRN": "f9d8d49a2146",
+      "UPRN Count": "e34d87a6a314",
+      "UPRNs": "e74e5e8afd46",
       "Verification": "a998486db219",
       "Verification Note": "59eb83e1cb39"
     },
@@ -224,6 +229,9 @@
       "ODS Code",
       "Operational Importance",
       "Operator / Trust",
+      "Postcode",
+      "Postcode Distance (m)",
+      "Postcode Method",
       "Primary Buildings",
       "Primary Category",
       "Site ID",
@@ -231,12 +239,14 @@
       "Site Name",
       "Site Type",
       "UPRN",
+      "UPRN Count",
+      "UPRNs",
       "Verification",
       "Verification Note"
     ],
     "file": "sites.csv",
     "rows": 1095,
-    "sha256": "4f24ea98306aae2c95fa9679b0f5ec066fa8d8b92b741bc09efb27ebd5882242"
+    "sha256": "140d8b735a114f99ffcc29a01f9097042f7db0e1a016c2f6fa76ba104218176a"
   },
   "summary": {
     "column_sha256": {

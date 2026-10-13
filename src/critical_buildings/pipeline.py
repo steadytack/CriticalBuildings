@@ -30,7 +30,7 @@ def check(area=paths.DEFAULT_AREA, store=None, rules_version=None):
         return problems + [str(e)]
     problems += rules.errors
     legacy = sources.legacy_unscoped_sources(area)
-    wanted = ["osm_overpass", "os_open_map_local", "os_codepoint_open", "dfe_gias", "cqc_hsca", "nhs_ods"]
+    wanted = ["osm_overpass", "os_open_map_local", "os_codepoint_open", "os_open_uprn", "dfe_gias", "cqc_hsca", "nhs_ods"]
     if sources.uses_extract(area):
         wanted.insert(1, "osm_extract")
     for source in wanted:

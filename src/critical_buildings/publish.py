@@ -142,7 +142,7 @@ def write_map(gdf, path):
 
 # What every run folder contains (used by release/archive and the regression test). Older runs used longer file names
 # (critical_buildings.csv, critical_sites.csv, critical_buildings.gpkg ...); find_output reads both.
-DELIVERABLES = ["dataset.gpkg", "buildings.csv", "sites.csv", "report.xlsx", "ATTRIBUTION.txt"]
+DELIVERABLES = ["dataset.gpkg", "buildings.csv", "sites.csv", "site_uprns.csv", "report.xlsx", "ATTRIBUTION.txt"]
 OUTPUT_NAMES = {"buildings": ("buildings.csv", "critical_buildings.csv"), "sites": ("sites.csv", "critical_sites.csv"),
                 "gpkg": ("dataset.gpkg", "critical_buildings.gpkg")}
 
@@ -165,6 +165,7 @@ def write_outputs(gold, silver, dest, rule_version, today):
     sites_out.to_file(dest / "dataset.gpkg", layer="sites", driver="GPKG", mode="a")
     live.to_csv(dest / "buildings.csv", index=False)
     sites_out.drop(columns="geometry").to_csv(dest / "sites.csv", index=False)
+    gold.site_uprns.to_csv(dest / "site_uprns.csv", index=False)          # every UPRN of every site, one row each: the join key table
     progress.step("Writing the report workbook (summary, review queue, data dictionary)")
     with pd.ExcelWriter(dest / "report.xlsx") as xw:
         live[docs.SLIM_COLUMNS].to_excel(xw, sheet_name="Summary", index=False)

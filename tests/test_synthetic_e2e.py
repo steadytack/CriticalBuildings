@@ -84,6 +84,18 @@ def test_each_synthetic_case_comes_out_as_designed(synthetic):
     lat, lon = pd.to_numeric(b["Latitude"]), pd.to_numeric(b["Longitude"])
     assert lat.between(51, 53).all() and lon.between(0, 2).all()
     sites = pd.read_csv(out / "sites.csv", dtype=str).fillna("")
+    links = pd.read_csv(out / "site_uprns.csv", dtype=str)
+    by_name = sites.set_index("Site Name")
+    for name, count, postcode, method in (("Testland Fire Station", "3", "TL1 9ZZ", "Code-Point inside outline"),
+                                          ("Oak Primary School", "2", "TL1 1AA", "Register"),
+                                          ("Elm Primary School", "1", "TL1 2BB", "Register"),
+                                          ("Testland Music Academy", "1", "TL1 8YY", "Code-Point nearest")):
+        site = by_name.loc[name]
+        assert (site["UPRN Count"], site["Postcode"], site["Postcode Method"]) == (count, postcode, method), name
+        assert sorted(links.loc[links["Site ID"] == site["Site ID"], "UPRN"]) == sorted(site["UPRNs"].split(";"))     # list and table agree
+    assert by_name.loc["Testland Music Academy", "Postcode Distance (m)"] == "100"
+    assert by_name.loc["Testland Fire Station", "UPRNs"] == "100000000001;100000000002;100000000003"
+    assert len(links) == 7 and "100000000099" not in set(links.UPRN)                      # the UPRN outside every site is in none
     assert sorted(sites["Site Type"]) == ["Fire Station", "Primary School", "Primary School", "School"]
     assert int(sites.set_index("Site Name").loc["Oak Primary School", "Buildings in Site"]) == 2
 

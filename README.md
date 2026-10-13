@@ -18,6 +18,7 @@ Each run writes a folder with these files (a *release* is a permanent copy of on
 | `report.xlsx` | **Start here.** One workbook: a *Summary* sheet (one row per building, 17 easy columns), QA sheets (coverage by type, review queue, sites no register recognises, changes since the last run) and the data dictionary (what every column means, the quality score formula, sources, licences, known limitations). |
 | `dataset.gpkg` | The full dataset for GIS tools: layer `buildings` (one row per building, 74 columns) and layer `sites` (one row per site with its outline). |
 | `buildings.csv`, `sites.csv` | The same two tables as CSV for everyone else. |
+| `site_uprns.csv` | One row per site and UPRN (Site ID, UPRN): every OS Open UPRN inside every site outline. The table to join customer or network records to sites on. |
 | `ATTRIBUTION.txt` | The credit lines to include when you share the data. |
 | `lineage.json` | Exactly what produced this run: input files (checksums), rule version, settings, code version. |
 
@@ -63,7 +64,7 @@ python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -e ".[ui,dev]"
 
-python -m critical_buildings fetch      # download the source data (about 300 MB) - first time only
+python -m critical_buildings fetch      # download the source data (about 1 GB, mostly OS Open UPRN) - first time only
 python -m critical_buildings check      # confirms rules, settings and data are ready
 python -m critical_buildings run        # build the dataset (about a minute after the first run)
 python -m critical_buildings runs       # list runs
@@ -122,7 +123,7 @@ history at commit `d31315c` (`legacy/`).
 
 ## Data sources and licences
 
-OpenStreetMap (ODbL), OS Open Map Local and Code-Point Open (OGL), DfE Get Information About Schools (OGL), CQC (OGL),
+OpenStreetMap (ODbL), OS Open Map Local, Code-Point Open and OS Open UPRN (OGL), DfE Get Information About Schools (OGL), CQC (OGL),
 NHS Organisation Data Service (OGL). Each release includes the exact attribution text. **OSM data is share-alike
 (ODbL): check with your information governance or legal team before distributing the dataset outside your organisation.**
 
