@@ -71,8 +71,8 @@ Releases are kept forever. See [guide.md](guide.md#runs-releases-and-archiving).
 ## Sensitivity
 
 The dataset includes prisons, MoD sites and data centres, all sourced from open data. There is **no sensitivity flag or
-access tiering yet**; if the product is shared beyond the organisation, decide whether some types should be withheld or
-published at reduced precision.
+access tiering**, by decision (0007 below): nothing in the inputs is secret, so there is nothing to withhold. Before sharing
+outside the organisation, check the two points under "Before external sharing" in that decision.
 
 ## Known limitations and roadmap
 
@@ -184,3 +184,25 @@ file vacuumed). Releases are no longer also written to the governed audit trail;
 - Good: a build no longer changes anything in git, and the committed rules store dropped from about 2 MB to under 200 KB.
 - Cost: the ID registries are no longer committed. Losing `data/state.db` restarts ID numbering for new builds, so every successful run and release copies it to `data/backups/` (the newest 10 run backups, plus one per release kept for good; `backup` does it on demand). The folder is on the same disk, so copy it elsewhere too. A fresh
   clone has no run history, and the end-to-end regression test needs a copy of `state.db` to reproduce the baseline's IDs.
+
+### 0007. No sensitivity tiers for now; two checks before external sharing
+
+**Context.** The dataset covers all of England, including military sites, prisons, data centres, energy centres and emergency
+services. A tiering scheme was considered (Open, Controlled, Restricted, with a per-rule sensitivity setting and a release step that
+withholds or coarsens the higher tiers).
+
+**Decision.** Do not build tiers now. Every input is already public: for the types that raise the question (MoD, prisons, data
+centres, energy centres, coastguard) the data is entirely OpenStreetMap, and the rest is OS Open Map Local and the DfE, CQC and NHS
+ODS registers, all published openly. Withholding a type from a copy of public data protects nothing. What the pipeline adds is
+aggregation and ranking: one national file that marks 77,470 of about 203,000 England buildings as High importance. That, not any
+single record, is the only thing a security owner might object to.
+
+**Before external sharing** (check these, do not assume them):
+1. **Licence.** OpenStreetMap data is share-alike (ODbL), so a shared copy may have to be offered under the same terms. Get a legal
+   view, and include `ATTRIBUTION.txt` (see Licensing above).
+2. **The ranking.** Decide with whoever owns information security whether the importance and quality columns go in the shared copy.
+   Dropping them is a small change to the release step (a list of columns to leave out), not a redesign.
+
+**Consequences.** Nothing to maintain while the data stays inside the organisation. If sharing widens, or a security owner asks for
+more than dropping the ranking, revisit: the tier idea above is the starting point, and the audited rules store is where a
+per-rule setting would live.
