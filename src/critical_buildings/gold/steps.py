@@ -213,12 +213,8 @@ def diff_runs(prev, cur):
 # ====================================================================================================
 
 SCHEMA = ["Building ID", "Source", "Source Feature ID", "Primary Category Default", "Building Type Default",
-          "DESNZ Priority Consumer Category A Default", "BUUK Catastrophic Risk - Public Default",
-          "BUUK Catastrophic Risk - Environmental Default", "BUUK Catastrophic Risk - Reputational Default",
           "Operational Importance Default", "Operational Importance Driver Default",
-          "Primary Category Override", "Building Type Override", "DESNZ Priority Consumer Category A Override",
-          "BUUK Catastrophic Risk - Public Override", "BUUK Catastrophic Risk - Environmental Override",
-          "BUUK Catastrophic Risk - Reputational Override", "BUUK Catastrophic Risk - Catastrophic Risk Override",
+          "Primary Category Override", "Building Type Override",
           "Operational Importance Override", "Operational Importance Driver Override", "Manual Override Notes",
           "Count UPRNs", "UPRNs inside footprint", "Geom", "Created Date", "Created By", "Last Edit Date",
           "Last Edit By", "Rule Version", "Run Date"]
