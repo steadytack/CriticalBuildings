@@ -319,6 +319,11 @@ def fetch_open_map_local(area="suffolk", dry_run=False):
                              note=f"Grid squares: {', '.join(t.upper() for t in tiles)}")
 
 
+def fetch_open_uprn(dry_run=False):
+    cat = load_sources()["os_open_uprn"]
+    return snapshot("os_open_uprn", [{"name": "osopenuprn_csv.zip", "url": cat["url"]}], dry_run=dry_run)
+
+
 def fetch_codepoint(dry_run=False):
     cat = load_sources()["os_codepoint_open"]
     return snapshot("os_codepoint_open", [{"name": "codepo_gb.zip", "url": cat["url"]}], dry_run=dry_run)
@@ -381,7 +386,7 @@ def fetch_nhs(dry_run=False):
 # Fetch everything
 # ====================================================================================================
 
-ALL = ("osm", "osmx", "os", "codepoint", "dfe", "cqc", "nhs")      # osmx (the Geofabrik extract) only for areas that set osm_extract
+ALL = ("osm", "osmx", "os", "codepoint", "uprn", "dfe", "cqc", "nhs")      # osmx (the Geofabrik extract) only for areas that set osm_extract
 
 
 def fetch_all(rules, area="suffolk", only=None, dry_run=False):
@@ -393,6 +398,7 @@ def fetch_all(rules, area="suffolk", only=None, dry_run=False):
         "osmx": lambda: fetch_osm_extract(area, dry_run),
         "os": lambda: fetch_open_map_local(area, dry_run),
         "codepoint": lambda: fetch_codepoint(dry_run),
+        "uprn": lambda: fetch_open_uprn(dry_run),
         "dfe": lambda: fetch_dfe(dry_run),
         "cqc": lambda: fetch_cqc(dry_run),
         "nhs": lambda: fetch_nhs(dry_run),

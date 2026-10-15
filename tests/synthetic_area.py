@@ -196,8 +196,22 @@ def _nhs(dest):
 def _codepoint(dest):
     with zipfile.ZipFile(dest / "codepo_gb.zip", "w") as z:
         z.writestr("Doc/Code-Point_Open_Column_Headers.csv", "PC,PQ,EA,NO,CY\n")
-        z.writestr("Data/CSV/tl.csv", "TL1 1AA,10,600550,240540,E92\nTL1 2BB,10,601505,241505,E92\nTL1 5EE,10,600400,240400,E92\n")
+        z.writestr("Data/CSV/tl.csv", "TL1 1AA,10,600550,240540,E92\nTL1 2BB,10,601505,241505,E92\nTL1 5EE,10,600400,240400,E92\n"
+                   "TL1 9ZZ,10,600120,240115,E92\nTL1 8YY,10,601100,241000,E92\n")      # 9ZZ is inside the fire station, 8YY 100 m from the music academy
     return ["codepo_gb.zip"]
+
+
+# OS Open UPRN points: 3 inside the fire station, 2 inside the Oak school site, 1 in the Elm footprint, 1 at the music academy, 1 nowhere
+UPRNS = [(100000000001, 600110, 240110), (100000000002, 600120, 240120), (100000000003, 600130, 240125),
+         (100000000011, 600550, 240540), (100000000012, 600600, 240600),
+         (100000000021, 601505, 241505), (100000000031, 601005, 241000), (100000000099, 610000, 250000)]
+
+
+def _uprn(dest):
+    rows = "".join(f"{u},{x},{y},52.0,1.0\n" for u, x, y in UPRNS)
+    with zipfile.ZipFile(dest / "osopenuprn_csv.zip", "w") as z:
+        z.writestr("osopenuprn_202609.csv", "UPRN,X_COORDINATE,Y_COORDINATE,LATITUDE,LONGITUDE\n" + rows)
+    return ["osopenuprn_csv.zip"]
 
 
 def _snapshot(source, files_fn, work, area=None, snapshot="2026-01-01"):
@@ -217,6 +231,7 @@ def build_bronze(work, extract=False):
         _snapshot("osm_extract", _extract, work, AREA)
     _snapshot("os_open_map_local", lambda d: _os_zip(d, work / "os"), work, AREA)
     _snapshot("os_codepoint_open", _codepoint, work)
+    _snapshot("os_open_uprn", _uprn, work)
     _snapshot("dfe_gias", _gias, work)
     _snapshot("cqc_hsca", _cqc, work)
     _snapshot("nhs_ods", _nhs, work)

@@ -70,7 +70,7 @@ D = {
     "CQC Rating": ("Authoritative check", "Latest overall CQC rating.", "Good"),
     "Operator / Trust": ("Authoritative check", "Trust, provider or operator.", ""),
     "Authoritative Postcode": ("Authoritative check", "Postcode from the register.", ""),
-    "UPRN": ("Authoritative check", "UPRN(s) given by CQC for the location. Not a full UPRN count - see Count UPRNs.", ""),
+    "UPRN": ("Authoritative check", "UPRN(s) given by CQC for the location. Not every UPRN at the site: see UPRN Count and UPRNs on the sites file.", ""),
     "ODS Code": ("Authoritative check", "NHS ODS organisation code.", ""),
     # quality and review
     "Match Method": ("Quality and review", "How the record was built: Overlap, Proximity, Proximity (names agree), OS only, OSM only, OSM area (no buildings), Authoritative only.", "Overlap"),
@@ -83,8 +83,8 @@ D = {
     "Latitude": ("Location", "Latitude (WGS84, EPSG:4326) of a point inside the record.", "52.2406"),
     "Longitude": ("Location", "Longitude (WGS84, EPSG:4326) of a point inside the record.", "0.7167"),
     "Geom": ("Location", "Geometry as WKT in British National Grid (EPSG:27700). The GeoPackage stores the real geometry instead.", "POLYGON((...))"),
-    "Count UPRNs": ("Location", "RESERVED: number of UPRNs inside the footprint. Not yet populated.", ""),
-    "UPRNs inside footprint": ("Location", "RESERVED: list of UPRNs inside the footprint. Not yet populated.", ""),
+    "Count UPRNs": ("Location", "RESERVED: number of UPRNs inside the building footprint. Not populated; the sites file has UPRN Count for each site.", ""),
+    "UPRNs inside footprint": ("Location", "RESERVED: list of UPRNs inside the building footprint. Not populated; see site_uprns.csv for each site.", ""),
     # audit
     "Created Date": ("Audit", "Date the record (or site) first appeared.", "2026-10-01"),
     "Created By": ("Audit", "Who created it ('pipeline' for automatic).", "pipeline"),
@@ -110,6 +110,11 @@ SITE_ONLY = {
     "Operational Importance": ("Classification", "Highest importance among the site's buildings.", "High"),
     "Site Method": ("Site", "How the site was formed (see buildings file).", "OS Functional Site"),
     "Created Date": ("Audit", "Date the site first appeared.", "2026-10-01"),
+    "UPRN Count": ("Join keys", "Number of OS Open UPRN points inside (or on) the site outline. A UPRN on the shared edge of two sites counts for both.", "42"),
+    "UPRNs": ("Join keys", "The UPRNs inside the site outline, separated by semicolons, in numeric order. Holds at most the first 200: UPRN Count is the full number and site_uprns.csv has every one.", "100012345678;100012345679"),
+    "Postcode": ("Join keys", "A postcode for the site: the register's when a register record matched, otherwise from Code-Point Open (see Postcode Method).", "IP1 1AA"),
+    "Postcode Method": ("Join keys", "Register = given by the matched DfE / CQC / NHS record. Code-Point inside outline = a postcode point lies inside the site (the one nearest its middle). Code-Point nearest = the nearest postcode point within 250 m. Blank = none found.", "Register"),
+    "Postcode Distance (m)": ("Join keys", "For Code-Point nearest, the distance from the middle of the site to the postcode point. 0 inside the outline; blank for Register.", "35"),
 }
 
 
@@ -124,7 +129,8 @@ LIMITATIONS = [
     "Building Role is a footprint-size and OSM-tag heuristic (default 150 m2). A small but critical building can be labelled Ancillary; use overrides.",
     "Name matching is heuristic. Matches more than 500 m from the register's point are flagged for review; exact-name matches are accepted up to 2 km.",
     "Hospital sites collect every CQC service and NHS ODS code at the campus, so Authoritative Name/Rating can list several values.",
-    "UPRN counts (Count UPRNs, UPRNs inside footprint) are not populated yet. UPRN holds only the UPRN(s) CQC gives for care locations.",
+    "UPRNs are counted per site (UPRN Count, UPRNs, site_uprns.csv), not per building: the building columns Count UPRNs and UPRNs inside footprint are not populated. OS Open UPRN points are address locations, so a site with no addresses (a field, a substation) has none.",
+    "A site's postcode from Code-Point is a postcode centroid, not the postcode of every address at the site: a large site can span several postcodes, and a small one may be given a neighbour's. Use the UPRNs when an exact link matters.",
     "DESNZ and BUUK columns are reserved and empty.",
     "The data quality score is a heuristic for sorting and filtering, not a probability that a record is correct.",
     "OSM data is licensed under ODbL (share-alike). Check with your information governance or legal team before sharing this dataset outside the organisation.",

@@ -3,7 +3,7 @@
 How the pipeline is built, how to change the rules, how runs and archives work, how lineage is recorded, and how to
 contribute. Ownership, quality checks, licensing and the reasons behind design choices are in [governance.md](governance.md).
 
-Contents: [Layers](#layers) · [Stages and code map](#stages-and-code-map) · [Rules](#rules) · [Runs, releases and archiving](#runs-releases-and-archiving) · [Lineage](#lineage) · [Adding an area or a source](#adding-an-area-or-a-source) · [Contributing](#contributing)
+Contents: [Layers](#layers) · [Stages and code map](#stages-and-code-map) · [Rules](#rules) · [Runs, releases and archiving](#runs-releases-and-archiving) · [Lineage](#lineage) · [Linking sites to other data](#linking-sites-to-other-data-uprns-and-postcodes) · [Adding an area or a source](#adding-an-area-or-a-source) · [Contributing](#contributing)
 
 ## Layers
 
@@ -232,9 +232,28 @@ archive), **Data** (browse and preview every layer), **Lineage** (inputs to outp
 (charts), **Settings** (thresholds with a reason) and **Reference data** (the editable rules).
 
 **What a run folder holds** (`data/gold/<area>/<run id>/`): `dataset.gpkg` (layers `buildings`, `sites`), `buildings.csv`,
-`sites.csv`, `report.xlsx` (Summary sheet first, then QA sheets, then the data dictionary), `ATTRIBUTION.txt`, `lineage.json`.
+`sites.csv`, `site_uprns.csv`, `report.xlsx` (Summary sheet first, then QA sheets, then the data dictionary), `ATTRIBUTION.txt`, `lineage.json`.
 Runs made before this layout used longer names (`critical_buildings.csv`, `critical_sites.csv`, separate workbooks and a stored
 map); they are still read and released as they are.
+
+## Linking sites to other data (UPRNs and postcodes)
+
+To see which critical sites a utility network (or any customer or asset data) serves, join on the keys the sites carry. Three files
+help, all written by the gold stage against the final site outlines:
+
+| Where | What |
+|---|---|
+| `site_uprns.csv` | One row per site and UPRN: every OS Open UPRN point inside (or on) the site outline. **The exact join table**: join your customers or supply points on `UPRN`, then group by `Site ID`. |
+| `sites` (layer and CSV): `UPRN Count`, `UPRNs` | How many UPRNs the site has, and the first 200 of them as text (`UPRNs` is a convenience: use `site_uprns.csv` for the full list). |
+| `sites`: `Postcode`, `Postcode Method`, `Postcode Distance (m)` | One postcode per site, for joins that go by postcode. `Register` = the matched DfE / CQC / NHS record's own postcode. Otherwise a Code-Point Open postcode point inside the outline (`Code-Point inside outline`), or the nearest within 250 m (`Code-Point nearest`, with the distance). Blank when none is that close. |
+
+Things to know:
+
+- **UPRNs are the reliable key; postcodes are a guide.** A Code-Point postcode is the centre of a postcode, not the postcode of every address at a site. Checked against the register's own postcode on the Suffolk sites that have one, the Code-Point choice is identical 66% of the time and in the same postcode district 99% of the time. A large site can span several postcodes.
+- **Sites with no addresses have no UPRNs:** airport structures, ferry terminals, energy centres and stations are typical (in Suffolk, 96 of 1,095 sites). They still have a postcode (when one is near) and an outline to intersect.
+- **A UPRN on the shared edge of two sites is listed for both,** so count distinct Site IDs when you aggregate.
+- **To intersect with a network by geometry instead,** use the `sites` layer (British National Grid, valid polygons) and buffer by 10 to 25 m: a supply connects at a building, not wherever a cable crosses the land. `Site Method` says how each outline was made, and the 15 m circles around register points are the roughest.
+- The join streams the national file (41.7 million points) in about 20 seconds for Suffolk and is kept as a conformed table, so a rerun with the same outlines reuses it. OS Open UPRN is refreshed by OS every six months; `fetch --only uprn` stores a new snapshot.
 
 ## Adding an area or a source
 
@@ -249,7 +268,7 @@ python -m critical_buildings fetch --area england --only osm,osmx,os   # about 3
 python -m critical_buildings run --area england
 ```
 
-The registers (DfE, CQC, NHS ODS, Code-Point) are national, so a Suffolk `fetch` already has them. Measured on a laptop:
+The registers (DfE, CQC, NHS ODS), Code-Point and OS Open UPRN are national, so a Suffolk `fetch` already has them. Measured on a laptop:
 
 | | First run | Rerun (same data) |
 |---|---|---|

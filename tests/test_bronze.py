@@ -328,3 +328,13 @@ def test_only_areas_with_an_osm_extract_fetch_it(monkeypatch):
     assert res["osm"]["files"] == ["area_boundary.json"]                       # an extract area asks Overpass only for its boundary
     assert sources.fetch_all(rules, "suffolk", only=["osm"], dry_run=True)["osm"]["files"] == [
         "osm_features.json", "osm_area_buildings.json", "area_boundary.json"]
+
+
+def test_the_uprn_source_is_fetched_validated_and_checked_before_a_run(isolated_paths, seeded_store):
+    rules = type("R", (), {"tags": []})()
+    res = sources.fetch_all(rules, "suffolk", only=["uprn"], dry_run=True)
+    assert res["uprn"] == {"status": "dry-run", "files": ["osopenuprn_csv.zip"]}
+    assert "uprn" in sources.ALL and sources.load_sources()["os_open_uprn"]["licence"].startswith("Open Government Licence")
+    from critical_buildings import pipeline
+    seeded_store.publish("tester", "test rules")
+    assert any("os_open_uprn" in p for p in pipeline.check("suffolk", store=seeded_store))                 # a run needs it
