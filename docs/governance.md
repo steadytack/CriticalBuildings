@@ -79,7 +79,8 @@ outside the organisation, check the two points under "Before external sharing" i
 - Two areas have been run (Suffolk and England); other areas are config-only. England reads OpenStreetMap from an extract, which drops
   the few features mapped as open ways.
 - Importance is by building type, not per building. The quality score is a heuristic, not a probability.
-- UPRN counts and the DESNZ/BUUK columns are reserved but empty (UPRN open data not yet added).
+- UPRNs are per site (`site_uprns.csv`), not per building. The DESNZ priority-consumer and BUUK catastrophic-risk columns, and the building-level UPRN
+  columns, were removed from the output for now (they were never populated); add them back with the rules or data that fill them.
 - `Closed per register` means the registered organisation closed; the building may still be in use.
 - The rules store is SQLite: one editor at a time. The store layer (`control/store.py`) is the only code that talks SQL, so
   moving to a shared database is contained.

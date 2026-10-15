@@ -83,8 +83,6 @@ D = {
     "Latitude": ("Location", "Latitude (WGS84, EPSG:4326) of a point inside the record.", "52.2406"),
     "Longitude": ("Location", "Longitude (WGS84, EPSG:4326) of a point inside the record.", "0.7167"),
     "Geom": ("Location", "Geometry as WKT in British National Grid (EPSG:27700). The GeoPackage stores the real geometry instead.", "POLYGON((...))"),
-    "Count UPRNs": ("Location", "RESERVED: number of UPRNs inside the building footprint. Not populated; the sites file has UPRN Count for each site.", ""),
-    "UPRNs inside footprint": ("Location", "RESERVED: list of UPRNs inside the building footprint. Not populated; see site_uprns.csv for each site.", ""),
     # audit
     "Created Date": ("Audit", "Date the record (or site) first appeared.", "2026-10-01"),
     "Created By": ("Audit", "Who created it ('pipeline' for automatic).", "pipeline"),
@@ -92,16 +90,6 @@ D = {
     "Last Edit By": ("Audit", "Who last edited it.", "pipeline"),
     "Rule Version": ("Audit", "Version of the published rule set that produced the record: v<number>-<content hash>.", "v1-cdb511"),
     "Run Date": ("Audit", "Date of the pipeline run.", "2026-10-01"),
-    # reserved
-    "DESNZ Priority Consumer Category A Default": ("Reserved", "RESERVED, not populated. Kept so the schema matches the original design.", ""),
-    "BUUK Catastrophic Risk - Public Default": ("Reserved", "RESERVED, not populated.", ""),
-    "BUUK Catastrophic Risk - Environmental Default": ("Reserved", "RESERVED, not populated.", ""),
-    "BUUK Catastrophic Risk - Reputational Default": ("Reserved", "RESERVED, not populated.", ""),
-    "DESNZ Priority Consumer Category A Override": ("Reserved", "RESERVED, not populated.", ""),
-    "BUUK Catastrophic Risk - Public Override": ("Reserved", "RESERVED, not populated.", ""),
-    "BUUK Catastrophic Risk - Environmental Override": ("Reserved", "RESERVED, not populated.", ""),
-    "BUUK Catastrophic Risk - Reputational Override": ("Reserved", "RESERVED, not populated.", ""),
-    "BUUK Catastrophic Risk - Catastrophic Risk Override": ("Reserved", "RESERVED, not populated.", ""),
 }
 # columns that exist only on the sites file, or mean something different there
 SITE_ONLY = {
@@ -129,9 +117,8 @@ LIMITATIONS = [
     "Building Role is a footprint-size and OSM-tag heuristic (default 150 m2). A small but critical building can be labelled Ancillary; use overrides.",
     "Name matching is heuristic. Matches more than 500 m from the register's point are flagged for review; exact-name matches are accepted up to 2 km.",
     "Hospital sites collect every CQC service and NHS ODS code at the campus, so Authoritative Name/Rating can list several values.",
-    "UPRNs are counted per site (UPRN Count, UPRNs, site_uprns.csv), not per building: the building columns Count UPRNs and UPRNs inside footprint are not populated. OS Open UPRN points are address locations, so a site with no addresses (a field, a substation) has none.",
+    "UPRNs are counted per site (UPRN Count, UPRNs, site_uprns.csv), not per building (the buildings file has no UPRN columns). OS Open UPRN points are address locations, so a site with no addresses (a field, a substation) has none.",
     "A site's postcode from Code-Point is a postcode centroid, not the postcode of every address at the site: a large site can span several postcodes, and a small one may be given a neighbour's. Use the UPRNs when an exact link matters.",
-    "DESNZ and BUUK columns are reserved and empty.",
     "The data quality score is a heuristic for sorting and filtering, not a probability that a record is correct.",
     "OSM data is licensed under ODbL (share-alike). Check with your information governance or legal team before sharing this dataset outside the organisation.",
 ]
