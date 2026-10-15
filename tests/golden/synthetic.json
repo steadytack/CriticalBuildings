@@ -23,7 +23,6 @@
       "Capacity Unit": "427dab37b579",
       "Classification Note": "545c38b0922d",
       "Confidence": "02120e2095a7",
-      "Count UPRNs": "545c38b0922d",
       "Created By": "7015eccc9de2",
       "Data Quality Band": "678f044892bf",
       "Data Quality Score": "2e6d11dbe531",
@@ -55,7 +54,6 @@
       "Source": "4f5b1713c253",
       "Source Feature ID": "e521e1b0d933",
       "UPRN": "545c38b0922d",
-      "UPRNs inside footprint": "545c38b0922d",
       "Verification": "221cda7050da",
       "Verification Note": "545c38b0922d",
       "Verification Override": "545c38b0922d"
@@ -83,7 +81,6 @@
       "Capacity Unit",
       "Classification Note",
       "Confidence",
-      "Count UPRNs",
       "Created By",
       "Data Quality Band",
       "Data Quality Score",
@@ -115,14 +112,13 @@
       "Source",
       "Source Feature ID",
       "UPRN",
-      "UPRNs inside footprint",
       "Verification",
       "Verification Note",
       "Verification Override"
     ],
     "file": "buildings.csv",
     "rows": 5,
-    "sha256": "fda0e1292947b92a540bcdbab9e28fb88bade94533eb7ce59c72ee38e122f283"
+    "sha256": "40e7f98dc3d99925925039ca2282d660bbaae08087eb5e1c092430b2c66f7675"
   },
   "counts": {
     "by_building_role": {

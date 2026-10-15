@@ -216,7 +216,7 @@ SCHEMA = ["Building ID", "Source", "Source Feature ID", "Primary Category Defaul
           "Operational Importance Default", "Operational Importance Driver Default",
           "Primary Category Override", "Building Type Override",
           "Operational Importance Override", "Operational Importance Driver Override", "Manual Override Notes",
-          "Count UPRNs", "UPRNs inside footprint", "Geom", "Created Date", "Created By", "Last Edit Date",
+          "Geom", "Created Date", "Created By", "Last Edit Date",
           "Last Edit By", "Rule Version", "Run Date"]
 REF_COLS = ["Verification", "Verification Note", "Authoritative Distance (m)", "Authoritative Source",
             "Authoritative ID", "Authoritative Name", "Authoritative Status", "Capacity", "Capacity Unit",

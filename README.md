@@ -130,7 +130,7 @@ NHS Organisation Data Service (OGL). Each release includes the exact attribution
 ## Status and known limitations
 
 Pilot quality: Suffolk and England have been run, other areas are untested. Importance comes from the rules by building type, not from an assessment of each building.
-The building-level UPRN columns (Count UPRNs, UPRNs inside footprint) are reserved but not populated: UPRNs are per site. The full list is in the data dictionary
+UPRNs are per site (`site_uprns.csv`), not per building. The full list is in the data dictionary
 (*Known limitations*) and [docs/governance.md](docs/governance.md#known-limitations-and-roadmap).
 
 ## Troubleshooting
