@@ -245,6 +245,7 @@ UPRN (an addressable location: a house, a flat, a shop, a bus shelter) in an are
 python -m critical_buildings fetch --only properties     # about 2.4 GB, once: census areas, deprivation, planning layers, flood zones
 python -m critical_buildings properties --check          # says whether everything it needs has been fetched
 python -m critical_buildings properties --area suffolk   # about a minute for Suffolk's 548,000 UPRNs
+python -m critical_buildings properties --area england   # about 30 minutes for England's 35.7 million UPRNs (needs about 10 GB of memory)
 ```
 
 Output (not in git): `data/properties/<area>/<run id>/table/` (parquet, one folder per 100 km OS grid square), beside `columns.csv` (what
@@ -280,14 +281,23 @@ What to know before relying on it:
 - **Flood zones ignore flood defences and cover rivers and the sea only**, not surface water or groundwater. Zone 1 means "not in zone 2 or 3",
   not "no risk". Surface water mapping is not offered because the Environment Agency says its dataset is not for property-level use, and
   the British Geological Survey's groundwater data is licensed, not open.
-- **Planning layers are only as complete as the councils that publish them** on planning.data.gov.uk.
+- **Planning layers are only as complete as the councils that publish them** on planning.data.gov.uk. `article_4_area` says a point is
+  inside at least one Article 4 direction area, not which rights it withdraws (a council may publish a borough-wide direction, which
+  puts every UPRN in the borough in the area: in England 16% of UPRNs are, and Westminster, Barnet, Oxford and Southampton are 100%).
+- **`flood_zone_type` is the source's own wording** (about 30 variants such as "Fluvial Models" or "Tidal Models and Tidal Events").
 - **The critical_site columns need a current critical-buildings run** for the area (`run --area <area>`); without one they are empty.
 - **Not yet part of the release system:** a property table has its own folder and lineage, but is not in the run registry, retention
   or the UI, and it has no releases.
 
-Checked on Suffolk: the five districts hold all but 54 of 547,714 UPRNs (those sit on the county edge), and spot checks matched the
-real world (Ipswich Cornhill and Lavenham in their conservation areas, the Ipswich Wet Dock marina in flood zone 3 from tidal
-models). **How it stays fast:** each 100 km square is linked on its own; the point-in-polygon test finds bounding-box candidates and tests
+**Checked.** Suffolk: the five districts hold all but 54 of 547,714 UPRNs (those sit on the county edge), and spot checks matched the real
+world (Ipswich Cornhill and Lavenham in their conservation areas, the Ipswich Wet Dock marina in flood zone 3 from tidal models).
+England (35,704,860 UPRNs, 1.6 GB, 27 grid squares): exactly the 296 English local authorities; every deprivation decile holds 8 to 11% of
+UPRNs (it should be 10%); the districts with the most UPRNs in flood zone 3 are the known ones (Boston 94%, Hull 90%, South Holland 77%,
+East Lindsey 50%; Southwark and Hammersmith and Fulham are above 60% because the Thames floodplain is mapped without its defences); and the
+779,395 UPRNs inside a critical site equal the distinct UPRNs of `site_uprns.csv`, which a different piece of code produced. 85% of UPRNs are
+inside a building footprint, 97% have a postcode within 250 m, 100% have an LSOA and deprivation scores.
+**How it scales:** memory is bounded by the largest grid square (TQ, around London, has 8.2 million UPRNs and takes about 10 GB), and the
+flood zones are cached one folder per square under `data/silver/<area>/properties/`. **How it stays fast:** each 100 km square is linked on its own; the point-in-polygon test finds bounding-box candidates and tests
 exact pairs with prepared polygons (the index's one-step predicate took 47 s per 100,000 points against the flood outlines, which have up to
 250,000 vertices; this takes a fraction of a second).
 
