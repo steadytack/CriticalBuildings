@@ -6,13 +6,16 @@ text, and OS Open UPRN) are streamed in batches, and the flood zones are kept as
 import datetime as dt
 import hashlib
 import json
+import shutil
 import zipfile
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.csv as pacsv
+import pyarrow.parquet as pq
 import shapely
 from pyogrio import read_dataframe
 from pyproj import Transformer
@@ -92,10 +95,10 @@ def _current(chunk, today):
     return (end == "") | (end > today)
 
 
-def _read_wkt_layer(path, columns, geometry_column, box_wgs, today):
-    """Rows of a planning.data.gov.uk CSV that have not ended and whose geometry meets the box: (frame, geometries array)."""
+def _iter_wkt_layer(path, columns, geometry_column, box_wgs, today):
+    """Chunks of a planning.data.gov.uk CSV, as (frame, geometries): only rows that have not ended and whose geometry meets the box.
+    A chunk at a time, so a 2 GB file never has to fit in memory."""
     bbox_geom = shapely.box(*box_wgs)
-    kept, geoms = [], []
     header = pd.read_csv(path, nrows=0).columns
     need = [c for c in [geometry_column, "end-date", *columns] if c in header]
     if geometry_column not in need:
@@ -109,10 +112,18 @@ def _read_wkt_layer(path, columns, geometry_column, box_wgs, today):
         hit = np.zeros(len(g), dtype=bool)
         hit[ok] = shapely.intersects(g[ok], bbox_geom)
         if hit.any():
-            kept.append(chunk[hit].drop(columns=[geometry_column]))
-            geoms.append(g[hit])
-    frame = pd.concat(kept, ignore_index=True) if kept else pd.DataFrame(columns=[c for c in need if c != geometry_column])
-    return frame, (np.concatenate(geoms) if geoms else np.array([], dtype=object))
+            yield chunk[hit].drop(columns=[geometry_column]), g[hit]
+
+
+def _read_wkt_layer(path, columns, geometry_column, box_wgs, today):
+    """All the rows _iter_wkt_layer yields, together: (frame, geometries array). For layers small enough to hold."""
+    kept, geoms = [], []
+    for frame, g in _iter_wkt_layer(path, columns, geometry_column, box_wgs, today):
+        kept.append(frame)
+        geoms.append(g)
+    if not kept:
+        return pd.DataFrame(columns=["end-date", *columns]), np.array([], dtype=object)
+    return pd.concat(kept, ignore_index=True), np.concatenate(geoms)
 
 
 def planning_polygons(dataset, columns, box_wgs, today=None):
@@ -135,28 +146,80 @@ def listing_points(box_wgs, today=None):
 # Flood zones (2 GB): parsed once per area and kept
 # ====================================================================================================
 
-def flood_polygons(area, box_wgs, today=None):
-    """{level: (polygons, types)} for flood zones 2 and 3 within the box, WGS84. Cached as a conformed table."""
+FLOOD_SCHEMA = pa.schema([("level", pa.int8()), ("type", pa.string()), ("wkb", pa.binary())])
+
+
+class FloodLayer:
+    """The flood zone 2 and 3 polygons of an area, kept one folder per OS grid square (tile=TM/part-0.parquet).
+
+    A polygon is stored under every square its bounding box touches, so a square can be linked from its own folder alone: memory is bounded
+    by one square's polygons however big the area, and the 2 GB text file is parsed once, a chunk at a time, not once per run."""
+
+    def __init__(self, folder, counts):
+        self.folder, self.counts = Path(folder), counts
+
+    def for_tile(self, tile):
+        """{level: (polygons, types)} (WGS84) for the zone 2 and zone 3 polygons that touch the grid square."""
+        path = self.folder / f"tile={tile}" / "part-0.parquet"
+        df = pd.read_parquet(path) if path.exists() else pd.DataFrame({"level": [], "type": [], "wkb": []})
+        out = {}
+        for level in (2, 3):
+            part = df[df["level"] == level].sort_values(["type", "wkb"], kind="stable")          # a fixed order, so ties are settled the same way
+            out[level] = (shapely.from_wkb(part["wkb"].to_numpy(object)) if len(part) else np.array([], dtype=object), part["type"].to_numpy(object))
+        return out
+
+
+def _tiles_touched(geoms):
+    """For each geometry (WGS84), the OS grid squares its bounding box touches, padded by 100 m: a list of codes per geometry."""
+    b = shapely.bounds(geoms)
+    lon = np.stack([b[:, 0], b[:, 2], b[:, 0], b[:, 2]])
+    lat = np.stack([b[:, 1], b[:, 1], b[:, 3], b[:, 3]])
+    e, n = _TO_BNG.transform(lon.ravel(), lat.ravel())
+    e, n = np.asarray(e).reshape(lon.shape), np.asarray(n).reshape(lon.shape)
+    e0, e1 = np.floor((e.min(axis=0) - 100) / 100_000).astype(int), np.floor((e.max(axis=0) + 100) / 100_000).astype(int)
+    n0, n1 = np.floor((n.min(axis=0) - 100) / 100_000).astype(int), np.floor((n.max(axis=0) + 100) / 100_000).astype(int)
+    from critical_buildings.properties import grid
+    return [[grid.TILES[(i, j)] for i in range(a, b_ + 1) for j in range(c, d + 1) if (i, j) in grid.TILES]
+            for a, b_, c, d in zip(e0, e1, n0, n1, strict=True)]
+
+
+def flood_layer(area, box_wgs, today=None):
+    """The area's flood zone polygons (a FloodLayer), parsed from the 2 GB file on first use and cached under the area's silver folder."""
     today = today or dt.date.today().isoformat()  # noqa: DTZ011 - local time is intended
-    key = hashlib.sha256(json.dumps([round(float(v), 3) for v in box_wgs]).encode()).hexdigest()[:12]
-    name = f"flood_zones_{key}.parquet"
-    inputs = [("ea_flood_zones", None)]
-    cached = paths.conformed_lookup(area, name, inputs)
-    if cached is not None:
-        df = pd.read_parquet(cached)
-    else:
-        frame, geoms = _read_wkt_layer(paths.bronze_file("ea_flood_zones", "flood-risk-zone.csv"), ["flood-risk-level", "flood-risk-type"],
-                                       "geometry", box_wgs, today)
-        df = pd.DataFrame({"level": pd.to_numeric(frame.get("flood-risk-level"), errors="coerce").astype("Int64"),
-                           "type": frame.get("flood-risk-type", pd.Series(dtype=str)).fillna("").to_numpy(),
-                           "wkb": shapely.to_wkb(geoms) if len(geoms) else np.array([], dtype=object)})
-        df.to_parquet(paths.silver_conformed_dir(area) / name)
-        paths.conformed_stamp(area, name, inputs)
-    out = {}
-    for level in (2, 3):
-        part = df[df["level"] == level].sort_values(["type", "wkb"], kind="stable")
-        out[level] = (shapely.from_wkb(part["wkb"].to_numpy(object)) if len(part) else np.array([], dtype=object), part["type"].to_numpy(object))
-    return out
+    key = hashlib.sha256((paths.inputs_key(area, [("ea_flood_zones", None)]) + json.dumps([round(float(v), 3) for v in box_wgs])).encode()).hexdigest()[:12]
+    folder = paths.SILVER / area / "properties" / f"flood_{key}"
+    done = folder / "_done.json"
+    if done.exists():
+        return FloodLayer(folder, json.loads(done.read_text(encoding="utf-8")))
+    tmp = folder.with_name(folder.name + "_tmp")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    writers, counts = {}, {"2": 0, "3": 0}
+    try:
+        for frame, geoms in _iter_wkt_layer(paths.bronze_file("ea_flood_zones", "flood-risk-zone.csv"), ["flood-risk-level", "flood-risk-type"],
+                                            "geometry", box_wgs, today):
+            level = pd.to_numeric(frame["flood-risk-level"], errors="coerce").fillna(0).astype(int).to_numpy()
+            kind = frame["flood-risk-type"].fillna("").to_numpy(object)
+            wkb = shapely.to_wkb(geoms)
+            rows = {}
+            for i, tiles in enumerate(_tiles_touched(geoms)):
+                if level[i] in (2, 3):
+                    counts[str(level[i])] += 1
+                    for t in tiles:
+                        rows.setdefault(t, []).append(i)
+            for t, idx in rows.items():
+                if t not in writers:
+                    (tmp / f"tile={t}").mkdir()
+                    writers[t] = pq.ParquetWriter(tmp / f"tile={t}" / "part-0.parquet", FLOOD_SCHEMA, compression="zstd")
+                writers[t].write_table(pa.table({"level": pa.array(level[idx], type=pa.int8()), "type": pa.array(kind[idx], type=pa.string()),
+                                                 "wkb": pa.array(wkb[idx], type=pa.binary())}, schema=FLOOD_SCHEMA))
+    finally:
+        for w in writers.values():
+            w.close()
+    (tmp / "_done.json").write_text(json.dumps(counts), encoding="utf-8")
+    shutil.rmtree(folder, ignore_errors=True)
+    tmp.rename(folder)                                                   # all or nothing: a half-written cache is never visible
+    return FloodLayer(folder, counts)
 
 
 # ====================================================================================================

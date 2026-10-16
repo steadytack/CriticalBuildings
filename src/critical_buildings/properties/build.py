@@ -102,11 +102,9 @@ class Context:
         progress.note("listed building outlines", len(self.listed_polys))
         progress.note("listing points", len(self.listing_points))
         progress.step("Reading the flood zones (a 2 GB file the first time, then kept)")
-        flood = inputs.flood_polygons(area, box_wgs)
-        self.zone3, self.zone3_types = flood[3]
-        self.zone2, self.zone2_types = flood[2]
-        progress.note("flood zone 3 polygons", len(self.zone3))
-        progress.note("flood zone 2 polygons", len(self.zone2))
+        self.flood = inputs.flood_layer(area, box_wgs)
+        progress.note("flood zone 3 polygons", self.flood.counts["3"])
+        progress.note("flood zone 2 polygons", self.flood.counts["2"])
         progress.step("Reading the postcode points (Code-Point Open)")
         self.postcodes = layers.PostcodeIndex(silver._postcode_table())
         self.site_run, sites = inputs.critical_sites(area)
@@ -207,13 +205,14 @@ def link_tile(tile, table, ctx):
     out["listed_distance_m"] = pa.array(gdist, from_pandas=True)
 
     # ---- flood
-    zone, in3, in2 = layers.flood_zone(lon, lat, ctx.zone3, ctx.zone2)
+    flood = ctx.flood.for_tile(tile)                                    # only this square's polygons are ever in memory
+    zone, in3, in2 = layers.flood_zone(lon, lat, flood[3][0], flood[2][0])
     out["flood_zone"] = pa.array(zone)
     ftype = np.full(n, None, dtype=object)
     in_3 = in3 >= 0
-    ftype[in_3] = ctx.zone3_types[in3[in_3]]
+    ftype[in_3] = flood[3][1][in3[in_3]]
     only_2 = ~in_3 & (in2 >= 0)
-    ftype[only_2] = ctx.zone2_types[in2[only_2]]
+    ftype[only_2] = flood[2][1][in2[only_2]]
     out["flood_zone_type"] = pa.array(ftype, type=pa.string())
 
     # ---- critical sites

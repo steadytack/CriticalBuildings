@@ -104,17 +104,25 @@ def test_planning_layers_skip_ended_entries_and_those_outside_the_box(tmp_path, 
     assert frame["name"].tolist() == ["live"] and len(polys) == 1 and shapely.contains_xy(polys[0], 1.5, 51.5)
 
 
-def test_the_flood_zones_are_parsed_once_and_then_read_from_the_cache(isolated_paths, monkeypatch):
+def test_the_flood_zones_are_parsed_once_kept_per_grid_square_and_read_from_the_cache(isolated_paths, monkeypatch):
     snap = paths.bronze_source_dir("ea_flood_zones") / "2026-01-01"
     snap.mkdir(parents=True)
-    wkt = "MULTIPOLYGON (((1 51, 2 51, 2 52, 1 52, 1 51)))"
-    pd.DataFrame({"end-date": ["", ""], "flood-risk-level": [3, 2], "flood-risk-type": ["Fluvial Models", "Tidal Models"],
-                  "geometry": [wkt, wkt]}).to_csv(snap / "flood-risk-zone.csv", index=False)
+    small = "MULTIPOLYGON (((1.00 52.00, 1.01 52.00, 1.01 52.01, 1.00 52.01, 1.00 52.00)))"             # inside grid square TM
+    straddling = "MULTIPOLYGON (((-0.5 52.0, 1.5 52.0, 1.5 52.1, -0.5 52.1, -0.5 52.0)))"               # crosses TL, TM and others
+    ended = "MULTIPOLYGON (((1.02 52.02, 1.03 52.02, 1.03 52.03, 1.02 52.03, 1.02 52.02)))"
+    pd.DataFrame({"end-date": ["", "", "2001-01-01"], "flood-risk-level": [3, 2, 3],
+                  "flood-risk-type": ["Fluvial Models", "Tidal Models", "Old Models"], "geometry": [small, straddling, ended]}
+                 ).to_csv(snap / "flood-risk-zone.csv", index=False)
     from critical_buildings import sources
     sources.write_manifest("ea_flood_zones", snap, [{"name": "flood-risk-zone.csv"}])
     sources.set_latest("ea_flood_zones", "2026-01-01")
-    first = inputs.flood_polygons("x", (0, 50, 3, 53), today="2026-10-16")
-    assert len(first[3][0]) == 1 and first[3][1].tolist() == ["Fluvial Models"] and first[2][1].tolist() == ["Tidal Models"]
-    monkeypatch.setattr(inputs, "_read_wkt_layer", lambda *a, **k: (_ for _ in ()).throw(AssertionError("parsed the 2 GB file again")))
-    again = inputs.flood_polygons("x", (0, 50, 3, 53), today="2026-10-16")
-    assert again[3][1].tolist() == ["Fluvial Models"] and shapely.equals(again[3][0][0], first[3][0][0])
+    layer = inputs.flood_layer("x", (-1, 50, 3, 53), today="2026-10-16")
+    assert layer.counts == {"2": 1, "3": 1}                                                          # the ended entry is not counted
+    tm, tl, tg = layer.for_tile("TM"), layer.for_tile("TL"), layer.for_tile("TG")
+    assert tm[3][1].tolist() == ["Fluvial Models"] and tm[2][1].tolist() == ["Tidal Models"]         # the big one touches TM ...
+    assert len(tl[3][0]) == 0 and tl[2][1].tolist() == ["Tidal Models"]                              # ... and TL, but the small one is only in TM
+    assert len(tg[3][0]) == 0 and len(tg[2][0]) == 0                                                 # TG is far from both
+    assert shapely.contains_xy(tm[3][0][0], 1.005, 52.005)
+    monkeypatch.setattr(inputs, "_iter_wkt_layer", lambda *a, **k: (_ for _ in ()).throw(AssertionError("parsed the 2 GB file again")))
+    again = inputs.flood_layer("x", (-1, 50, 3, 53), today="2026-10-16")
+    assert again.counts == layer.counts and again.for_tile("TM")[3][1].tolist() == ["Fluvial Models"]
