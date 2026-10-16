@@ -3,7 +3,7 @@
 How the pipeline is built, how to change the rules, how runs and archives work, how lineage is recorded, and how to
 contribute. Ownership, quality checks, licensing and the reasons behind design choices are in [governance.md](governance.md).
 
-Contents: [Layers](#layers) · [Stages and code map](#stages-and-code-map) · [Rules](#rules) · [Runs, releases and archiving](#runs-releases-and-archiving) · [Lineage](#lineage) · [Linking sites to other data](#linking-sites-to-other-data-uprns-and-postcodes) · [Adding an area or a source](#adding-an-area-or-a-source) · [Contributing](#contributing)
+Contents: [Layers](#layers) · [Stages and code map](#stages-and-code-map) · [Rules](#rules) · [Runs, releases and archiving](#runs-releases-and-archiving) · [Lineage](#lineage) · [The UPRN property table](#the-uprn-property-table) · [Linking sites to other data](#linking-sites-to-other-data-uprns-and-postcodes) · [Adding an area or a source](#adding-an-area-or-a-source) · [Contributing](#contributing)
 
 ## Layers
 
@@ -235,6 +235,61 @@ archive), **Data** (browse and preview every layer), **Lineage** (inputs to outp
 `sites.csv`, `site_uprns.csv`, `report.xlsx` (Summary sheet first, then QA sheets, then the data dictionary), `ATTRIBUTION.txt`, `lineage.json`.
 Runs made before this layout used longer names (`critical_buildings.csv`, `critical_sites.csv`, separate workbooks and a stored
 map); they are still read and released as they are.
+
+## The UPRN property table
+
+A second product, built from the same data and the same pipeline code. It answers "what do we know about this address point?" for every
+UPRN (an addressable location: a house, a flat, a shop, a bus shelter) in an area, using only open data.
+
+```bash
+python -m critical_buildings fetch --only properties     # about 2.4 GB, once: census areas, deprivation, planning layers, flood zones
+python -m critical_buildings properties --check          # says whether everything it needs has been fetched
+python -m critical_buildings properties --area suffolk   # about a minute for Suffolk's 548,000 UPRNs
+```
+
+Output (not in git): `data/properties/<area>/<run id>/table/` (parquet, one folder per 100 km OS grid square), beside `columns.csv` (what
+every column means), `ATTRIBUTION.txt` (credits to include when you share it), `summary.json` (how many rows have each link) and
+`lineage.json` (what went in). Read it with any parquet reader:
+
+```python
+import pandas as pd
+df = pd.read_parquet("data/properties/suffolk/<run id>/table")           # QGIS, DuckDB and R read the folder too
+df[(df.flood_zone == 3) & (df.imd_decile <= 3)]                          # high flood risk in the most deprived 30% of areas
+```
+
+| Link | Where it comes from | Columns |
+|---|---|---|
+| The UPRN and its position | OS Open UPRN (OGL) | `uprn`, `easting`, `northing`, `latitude`, `longitude`, `os_tile` |
+| Building | OS Open Map Local building footprints: the one the point lies inside | `building_id`, `building_area_m2`, `uprns_in_building` (1 suggests a house, many suggest flats) |
+| Postcode | The nearest Code-Point Open postcode point within 250 m | `postcode`, `postcode_distance_m` |
+| Census area and deprivation | ONS LSOA outlines (2021) and the English Indices of Deprivation 2025 | `lsoa_*`, `lad_*`, `imd_score`, `imd_rank`, `imd_decile`, seven domain deciles, children and older-people indices, LSOA population (total, aged 0-15, aged 60 and over) |
+| Planning | planning.data.gov.uk: conservation areas, Article 4 direction areas, Historic England listed building outlines and points | `conservation_area`(`_name`), `article_4_area`, `listed_in_outline`, `listed_grade`, `listed_distance_m` |
+| Flood | Environment Agency Flood Map for Planning, zones 2 and 3 (rivers and sea) | `flood_zone` (3 high, 2 medium, 1 low), `flood_zone_type` |
+| Critical sites | The area's current critical-buildings run | `critical_site_id`, `_type`, `_importance`, `_distance_m` (0 = inside the site outline; otherwise the nearest within 1 km) |
+
+What to know before relying on it:
+
+- **It is every address point, not every home.** OS Open UPRN does not say which are domestic. The clearest open signal for "domestic" is the
+  EPC register (also the source of age, built form, floor area and heating), which needs a free account to download, so it is not
+  included yet. Until then `uprns_in_building` and the building area are the only hints.
+- **Deprivation is a property of the area, not the household:** every UPRN in an LSOA gets the LSOA's scores.
+- **The postcode is a guide.** The nearest postcode centre is often a neighbouring postcode, and 5% of Suffolk's UPRNs have none within 250 m.
+- **Listed status is approximate.** Where Historic England publishes an outline (about 3,000 in Suffolk) `listed_in_outline` is the sure case.
+  The grade comes from the nearest listing point within 10 m, which is rough (measured: for UPRNs inside an outline, three in four have a
+  point within 11 m); it can name a neighbour and miss a listing whose point is further off.
+- **Flood zones ignore flood defences and cover rivers and the sea only**, not surface water or groundwater. Zone 1 means "not in zone 2 or 3",
+  not "no risk". Surface water mapping is not offered because the Environment Agency says its dataset is not for property-level use, and
+  the British Geological Survey's groundwater data is licensed, not open.
+- **Planning layers are only as complete as the councils that publish them** on planning.data.gov.uk.
+- **The critical_site columns need a current critical-buildings run** for the area (`run --area <area>`); without one they are empty.
+- **Not yet part of the release system:** a property table has its own folder and lineage, but is not in the run registry, retention
+  or the UI, and it has no releases.
+
+Checked on Suffolk: the five districts hold all but 54 of 547,714 UPRNs (those sit on the county edge), and spot checks matched the
+real world (Ipswich Cornhill and Lavenham in their conservation areas, the Ipswich Wet Dock marina in flood zone 3 from tidal
+models). **How it stays fast:** each 100 km square is linked on its own; the point-in-polygon test finds bounding-box candidates and tests
+exact pairs with prepared polygons (the index's one-step predicate took 47 s per 100,000 points against the flood outlines, which have up to
+250,000 vertices; this takes a fraction of a second).
 
 ## Linking sites to other data (UPRNs and postcodes)
 
