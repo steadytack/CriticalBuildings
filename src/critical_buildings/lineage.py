@@ -46,10 +46,13 @@ def canonical_hash(csv_path, key="Building ID", drop=VOLATILE):
     return hashlib.sha256(df.to_csv(index=False).encode("utf-8")).hexdigest()
 
 
-def bronze_inputs(area=None):
-    """The snapshots currently marked LATEST for every source (for `area`, when given), with file checksums."""
+def bronze_inputs(area=None, only=paths.PIPELINE_SOURCES):
+    """The snapshots currently marked LATEST for the sources a build reads (all of them when `only` is None), for `area` when given,
+    with file checksums."""
     out = []
     for m in sources.all_manifests(area):
+        if only is not None and m["source"] not in only:
+            continue
         out.append({"source": m["source"], "area": m.get("area"), "snapshot": m["snapshot"], "retrieved_at": m["retrieved_at"],
                     "licence": m["licence"], "files": [{"name": f["name"], "sha256": f["sha256"], "bytes": f["bytes"]} for f in m["files"]]})
     return out

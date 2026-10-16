@@ -61,6 +61,9 @@ reruns. They are also in the `override` section of `governed/control_dump.txt` f
 | OpenStreetMap | ODbL 1.0 | Share-alike: a derived database may have to be offered under the same terms. **Get a legal view before external sharing.** |
 | OS Open Map Local, Code-Point Open | OGL v3 | Acknowledge OS (text in `ATTRIBUTION.txt`). Code-Point also carries Royal Mail and ONS acknowledgements. |
 | DfE GIAS, CQC, NHS ODS | OGL v3 | Acknowledge the publisher. |
+| OS Open UPRN | OGL v3 | Acknowledge OS. Used for the property table and the site UPRN join. |
+| ONS LSOA boundaries, English Indices of Deprivation 2025 | OGL v3 | Acknowledge ONS and MHCLG. The data.gov.uk listing for the ONS boundaries leaves the licence blank; the ONS portal states OGL, with OS data inside, so **confirm before sharing**. |
+| planning.data.gov.uk layers (conservation areas, Article 4, listed buildings), Environment Agency flood zones | OGL v3 | Acknowledge the councils, Historic England and the Environment Agency (text in the property table's `ATTRIBUTION.txt`). Check each dataset's licence on planning.data.gov.uk before sharing. |
 
 ## Retention
 
@@ -207,3 +210,20 @@ single record, is the only thing a security owner might object to.
 **Consequences.** Nothing to maintain while the data stays inside the organisation. If sharing widens, or a security owner asks for
 more than dropping the ranking, revisit: the tier idea above is the starting point, and the audited rules store is where a
 per-rule setting would live.
+
+### 0008. The UPRN property table is a separate, area-based product that uses open data only
+
+**Context.** The same spine (UPRNs, sites, outlines) serves other questions: which homes are in flood zones, which are in conservation
+areas, which are near critical sites. Commercial services (for example Bricksmart) combine valuations, ownership and mortgage data we
+cannot and should not use.
+
+**Decision.** Build the property table as its own command and its own parquet output (`properties`), in the same repository and sharing the
+source catalogue, downloads, locks and lineage code. Use open data only. Do not include owner, mortgage, valuation or name data: the
+table links a place to open facts about the place, and holds nothing about people. Partition by OS grid square so memory is bounded by one
+square, not by the size of the area.
+
+**Consequences.**
+- Good: one source catalogue and one set of downloads; a new link (EPC, price paid, surface water) is a new layer function and column.
+- Cost: no run registry, retention, UI tab or releases for it yet, so nothing archives or prunes it.
+- Open: "domestic" is not known without the EPC register, which needs an account. EPC and Land Registry price paid both carry addresses, so
+  adding them means address matching and a fresh look at personal data before any sharing.

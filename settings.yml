@@ -83,6 +83,13 @@ reference_match:                            # DfE / CQC / NHS ODS records <-> si
                medical, practice, health, house, lodge, and, a, an, at, in, for, ltd, limited, cic, trust, unit,
                clinic, infants, juniors]
 
+properties:                                 # the UPRN property table (python -m critical_buildings properties)
+  postcode_max_m: 250                       # a Code-Point postcode further than this from a property is not offered
+  lsoa_near_m: 300                          # a property outside every generalised LSOA outline takes the nearest one within this distance
+  listed_near_m: 10                         # the grade of a listed building comes from the nearest listing point within this distance
+                                            # (measured on Suffolk: for UPRNs inside a listed outline, 3 in 4 have a listing point within 11 m; 30 m flagged 8% of all UPRNs)
+  critical_site_near_m: 1000                # report the nearest critical site if it is within this distance
+
 quality:                                    # data quality score (0-100), documented in the data dictionary
   verification_points: {Verified: 40, Verified (manual): 40, Authoritative only: 40, Not covered: 20, Unverified: 10, Closed per register: 0}
   source_points: {Both: 25, OSM: 12, OS Important Buildings: 12}
@@ -188,6 +195,57 @@ sources:
     uses: One point per addressable location (UPRN); the UPRNs inside each site, to link sites to customer and network records
     refresh: six-monthly (OS release cycle)
     owner: data engineering
+
+  ons_lsoa:
+    name: ONS Lower layer Super Output Areas (December 2021) boundaries, generalised (BGC)
+    kind: api
+    url: "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/Lower_layer_Super_Output_Areas_December_2021_Boundaries_EW_BGC_V5/FeatureServer/0/query"
+    page_size: 2000                          # the service returns at most this many areas per request
+    licence: Open Government Licence v3.0    # as stated on the ONS Open Geography Portal; the data.gov.uk listing leaves the licence blank
+    attribution: >-
+      Source: Office for National Statistics licensed under the Open Government Licence v3.0.
+      Contains OS data (c) Crown copyright and database right 2026
+    uses: Which census area (LSOA) each property is in, to attach deprivation and population
+    refresh: with each census geography release
+    owner: data steward
+
+  iod2025:
+    name: "English Indices of Deprivation 2025 (File 7: all ranks, scores, deciles and population denominators)"
+    kind: download
+    url: "https://assets.publishing.service.gov.uk/media/691ded56d140bbbaa59a2a7d/File_7_IoD2025_All_Ranks_Scores_Deciles_Population_Denominators.csv"
+    licence: Open Government Licence v3.0
+    attribution: >-
+      Contains public sector information licensed under the Open Government Licence v3.0.
+      Source: Ministry of Housing, Communities and Local Government
+    uses: Deprivation rank and deciles and the population make-up of the LSOA each property is in (England only)
+    refresh: about every three to four years (the link is fixed to this release; a corrected release has a new link)
+    owner: data steward
+
+  planning_data:
+    name: planning.data.gov.uk (conservation areas, listed buildings, Article 4 direction areas)
+    kind: download
+    url: "https://files.planning.data.gov.uk/dataset/{dataset}.csv"
+    datasets: [conservation-area, listed-building-outline, listed-building, article-4-direction-area]
+    licence: Open Government Licence v3.0
+    attribution: >-
+      Contains public sector information licensed under the Open Government Licence v3.0.
+      Conservation areas and Article 4 directions: local planning authorities, via planning.data.gov.uk.
+      Listed buildings: (c) Historic England 2026. Contains Ordnance Survey data (c) Crown copyright and database right 2026
+    uses: Whether a property is in a conservation area or an Article 4 direction area, and whether it is a listed building
+    refresh: monthly (the platform is updated continuously by councils)
+    owner: data steward
+
+  ea_flood_zones:
+    name: Flood Map for Planning, flood zones 2 and 3 (Environment Agency, via planning.data.gov.uk)
+    kind: download
+    url: "https://files.planning.data.gov.uk/dataset/flood-risk-zone.csv"
+    licence: Open Government Licence v3.0
+    attribution: >-
+      (c) Environment Agency copyright and/or database right 2026. All rights reserved.
+      Contains public sector information licensed under the Open Government Licence v3.0
+    uses: The flood zone of each property (3 = high, 2 = medium, 1 = low or none) from rivers and the sea; not surface water or groundwater
+    refresh: quarterly
+    owner: data steward
 
   dfe_gias:
     name: DfE Get Information About Schools
