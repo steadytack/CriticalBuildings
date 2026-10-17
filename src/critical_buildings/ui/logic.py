@@ -4,7 +4,9 @@ import math
 
 import pandas as pd
 
+from critical_buildings import config, paths, sources
 from critical_buildings.control import rules as validate
+from critical_buildings.ui import flow
 
 
 def _missing(v):
@@ -155,3 +157,23 @@ def sanity_problems(runs_df, tolerance=SANITY_TOLERANCE):
             problems.append(f"Building count moved from {before} to {latest['buildings']} (more than {tolerance:.0%}) "
                             f"against the previous run. Review before releasing.")
     return problems
+
+
+# ------------------------------------------------------------------ the source catalogue as rows for the diagrams
+def source_rows(area, only=paths.PIPELINE_SOURCES):
+    """The source catalogue as rows for the diagrams: by default only what the critical-buildings pipeline reads (the property table has
+    its own diagram). An OpenStreetMap extract is listed only for an area that uses one."""
+    rows = []
+    for sid, cat in config.load_sources().items():
+        if only is not None and sid not in only:
+            continue
+        if sid == "osm_extract" and not sources.uses_extract(area):
+            continue
+        snap = paths.latest_snapshot(sid, area if cat.get("area_scoped") else None)
+        retrieved = None
+        if snap:
+            retrieved = sources.read_manifest(paths.bronze_snapshot(sid, area if cat.get("area_scoped") else None))["retrieved_at"]
+        age, status = flow.source_status(retrieved, cat.get("refresh"))
+        rows.append({"id": sid, "name": cat["name"], "snapshot": snap, "age": age, "status": status, "refresh": cat.get("refresh", ""),
+                     "licence": cat.get("licence", ""), "retrieved_at": retrieved})
+    return rows

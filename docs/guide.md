@@ -269,6 +269,11 @@ python -m critical_buildings properties --area suffolk   # about a minute for Su
 python -m critical_buildings properties --area england   # about 30 minutes for England's 35.7 million UPRNs (needs about 10 GB of memory)
 ```
 
+In the web UI the **Properties** tab does all of this without the command line: it fetches the property sources and builds the table as
+background jobs, says when a newer critical-buildings run or source snapshot makes the table out of date, shows what each link covers, and
+explores the table (district, flood zone, deprivation, planning status, nearest critical site) with a map and a CSV download of up to
+200,000 rows. It reads the parquet through pyarrow, so it stays quick for England.
+
 Output (not in git): `data/properties/<area>/<run id>/table/` (parquet, one folder per 100 km OS grid square), beside `columns.csv` (what
 every column means), `ATTRIBUTION.txt` (credits to include when you share it), `summary.json` (how many rows have each link) and
 `lineage.json` (what went in). Read it with any parquet reader:

@@ -84,6 +84,27 @@ def flow_dot(source_rows, stage_cfgs, stage_rows, releases=0, latest_release=Non
     return "\n".join(out)
 
 
+def properties_dot(source_rows, latest=None, critical_run=None):
+    """The property table's own flow: the open sources and the current critical-buildings run feed one linking step that makes the table.
+
+    source_rows: as for flow_dot (only the sources the table uses); latest: properties_logic.latest_table() or None; critical_run: the run id
+    the critical_site columns came from (or would come from)."""
+    out = ["digraph properties {", "  rankdir=LR; bgcolor=\"transparent\"; nodesep=0.25; ranksep=0.5;",
+           '  node [style="rounded,filled", fontname="Helvetica", fontsize=11, penwidth=1.6, fontcolor="#1b1b1b"];',
+           '  edge [color="#78909c"];']
+    for s in source_rows:
+        age = "never fetched" if s["age"] is None else f"{s['age']} days old"
+        out.append(_node(f"src_{s['id']}", f"{s['name']}\\n{age}", s["status"]))
+    out.append(_node("critical", "Critical sites\\n" + (critical_run or "no current run"), "succeeded" if critical_run else None))
+    out.append(_node("link", "Link each UPRN\\nto the open data", "succeeded" if latest else None))
+    caption = (f"Property table\\n{latest['rows']:,} UPRNs\\nbuilt {str(latest['built_at'])[:10]}" if latest
+               else "Property table\\nnot built yet")
+    out.append(_node("table", caption, "succeeded" if latest else None, shape="folder"))
+    out += [f"  src_{s['id']} -> link;" for s in source_rows]
+    out += ["  critical -> link;", "  link -> table;", "}"]
+    return "\n".join(out)
+
+
 def lineage_dot(lin):
     """A run's inputs -> outputs graph from lineage.json: bronze snapshots, rule set, silver build, run, output files."""
     out = ["digraph lineage {", "  rankdir=LR; bgcolor=\"transparent\"; nodesep=0.2;",

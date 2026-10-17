@@ -26,6 +26,7 @@ from critical_buildings.locks import LockedError
 from critical_buildings.ui import flow, jobs, logic
 from critical_buildings.ui.common import bump, key
 from critical_buildings.ui.common import store as common_store
+from critical_buildings.ui.logic import source_rows
 
 ICONS = {"pending": "⚪", "running": "🔄", "succeeded": "✅", "failed": "❌"}
 
@@ -33,20 +34,6 @@ ICONS = {"pending": "⚪", "running": "🔄", "succeeded": "✅", "failed": "❌
 # ------------------------------------------------------------------------------------------------ shared helpers
 def stage_cfgs():
     return list(config.get().pipeline.stages)
-
-
-def source_rows(area):
-    rows = []
-    for sid, cat in config.load_sources().items():
-        snap = paths.latest_snapshot(sid, area if cat.get("area_scoped") else None)
-        retrieved = None
-        if snap:
-            retrieved = sources.read_manifest(paths.bronze_snapshot(sid, area if cat.get("area_scoped") else None))["retrieved_at"]
-        age, status = flow.source_status(retrieved, cat.get("refresh"))
-        rows.append({"id": sid, "name": cat["name"], "snapshot": snap, "age": age, "status": status, "refresh": cat.get("refresh", ""),
-                     "licence": cat.get("licence", ""), "retrieved_at": retrieved})
-    return rows
-
 
 
 @st.cache_data(show_spinner="Drawing the map ...")

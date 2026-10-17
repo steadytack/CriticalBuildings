@@ -10,7 +10,7 @@ from critical_buildings import config, paths
 from critical_buildings.control import dumps
 from critical_buildings.control import rules as rs
 from critical_buildings.control.store import ControlError, current_user
-from critical_buildings.ui import logic, rules_tabs, views
+from critical_buildings.ui import logic, properties_tab, rules_tabs, views
 from critical_buildings.ui.common import bump, key, store
 
 PRODUCT = config.get().product
@@ -70,6 +70,9 @@ def tab_help():
 - **Data**: what is on disk in each layer, with previews of any file.
 - **Lineage**: a run's inputs and outputs as a graph, and a "why is this record like this?" lookup.
 - **Quality**: counts and charts for a run.
+- **Properties**: the UPRN property table, a second product: every address point in the area linked to open data (building, postcode,
+  deprivation, conservation and listed status, flood zone, nearest critical site). Fetch its sources, build it, see what it covers and
+  whether it is out of date, and explore or download matching UPRNs.
 - **Settings**: the technical thresholds in settings.yml (each change needs a reason).
 - **Reference data**: the editable business rules, role settings, register mapping and review decisions. Edits go to a **draft**;
   **Publish** (sidebar) freezes it as a numbered, immutable version. Runs always use a published version, so any past run can be reproduced.
@@ -82,7 +85,7 @@ def main():
     s = store()
     area = sidebar(s)
     st.title(PRODUCT.name)
-    names = ["Pipeline", "Run", "Runs", "Data", "Lineage", "Quality", "Settings", "Reference data", "Help"]
+    names = ["Pipeline", "Run", "Runs", "Data", "Lineage", "Quality", "Properties", "Settings", "Reference data", "Help"]
     tabs = dict(zip(names, st.tabs(names), strict=False))
     with tabs["Pipeline"]:
         views.tab_pipeline(s, area)
@@ -96,6 +99,8 @@ def main():
         views.tab_lineage(s, area)
     with tabs["Quality"]:
         views.tab_quality(s, area)
+    with tabs["Properties"]:
+        properties_tab.tab_properties(s, area)
     with tabs["Settings"]:
         views.tab_settings(s)
     with tabs["Reference data"]:
