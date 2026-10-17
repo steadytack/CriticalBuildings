@@ -116,9 +116,21 @@ def test_the_web_ui_listens_on_this_computer_only_unless_told_otherwise(monkeypa
     assert exposed[exposed.index("--server.address") + 1] == "0.0.0.0" and exposed[exposed.index("--server.headless") + 1] == "true"
     started = []
     monkeypatch.setattr("subprocess.call", lambda cmd: started.append(cmd) or 0)
+    import sys
+    import types
+    monkeypatch.setitem(sys.modules, "streamlit", types.ModuleType("streamlit"))                 # CI does not install the ui extra
     assert cli.main(["ui", "--headless"]) == 0
     out = capsys.readouterr().out
     assert "WARNING" not in out and "http://localhost:8501" in out and started[-1][started[-1].index("--server.address") + 1] == "127.0.0.1"
     assert cli.main(["ui", "--host", "0.0.0.0", "--port", "9001"]) == 0                         # noqa: S104
     out = capsys.readouterr().out
     assert "WARNING: listening on 0.0.0.0" in out and "no login" in out and started[-1][started[-1].index("--server.address") + 1] == "0.0.0.0"
+
+
+def test_the_web_ui_says_what_to_install_when_streamlit_is_missing(monkeypatch, capsys):
+    import sys
+
+    from critical_buildings import cli
+    monkeypatch.setitem(sys.modules, "streamlit", None)                                         # makes `import streamlit` fail
+    monkeypatch.setattr("subprocess.call", lambda cmd: (_ for _ in ()).throw(AssertionError("must not start without Streamlit")))
+    assert cli.main(["ui"]) == 1 and "pip install -e .[ui]" in capsys.readouterr().out
