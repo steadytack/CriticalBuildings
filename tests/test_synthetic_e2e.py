@@ -14,7 +14,7 @@ import shapely
 import synthetic_area
 from shapely.geometry import Point
 
-from critical_buildings import config, pipeline, silver
+from critical_buildings import config, pipeline, postcodes
 
 BASELINE = Path(__file__).parent / "golden" / "synthetic.json"
 
@@ -23,7 +23,7 @@ def _synthetic(isolated_paths, seeded_store, monkeypatch, extract):
     raw = config._raw
     area = synthetic_area.area_config(extract)
     monkeypatch.setattr(config, "_raw", lambda path=None: {**raw(path), "areas": {**raw(path)["areas"], synthetic_area.AREA: area}})
-    silver._postcode_table.cache_clear()
+    postcodes.postcode_table.cache_clear()
     synthetic_area.build_bronze(isolated_paths / "work", extract)
     seeded_store.publish("tester", "synthetic area rules")
     return seeded_store
@@ -33,14 +33,14 @@ def _synthetic(isolated_paths, seeded_store, monkeypatch, extract):
 def synthetic(isolated_paths, seeded_store, monkeypatch):
     """Bronze data for the synthetic area in a temp data folder, the area registered, and a published rule set."""
     yield _synthetic(isolated_paths, seeded_store, monkeypatch, extract=False)
-    silver._postcode_table.cache_clear()
+    postcodes.postcode_table.cache_clear()
 
 
 @pytest.fixture
 def synthetic_extract(isolated_paths, seeded_store, monkeypatch):
     """The same area, but OpenStreetMap comes from an extract file (the route used for whole countries)."""
     yield _synthetic(isolated_paths, seeded_store, monkeypatch, extract=True)
-    silver._postcode_table.cache_clear()
+    postcodes.postcode_table.cache_clear()
 
 
 # Columns left out of the comparison: dates (a fresh registry stamps today) and coordinates, in text form (they come from a

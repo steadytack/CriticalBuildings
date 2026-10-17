@@ -99,21 +99,33 @@ def cmd_runs(args):
     return 0
 
 
-def cmd_ui(args):
-    import subprocess
+LOCAL_ONLY = "127.0.0.1"
+
+
+def ui_command(port, host=LOCAL_ONLY, headless=False):
+    """The command that starts the web UI. It listens on this computer only unless a host is given: Streamlit's own default is every
+    network interface, and the UI has no login but can edit the rules and start runs."""
     from pathlib import Path
     app = Path(__file__).parent / "ui" / "app.py"
+    cmd = [sys.executable, "-m", "streamlit", "run", str(app), "--server.port", str(port), "--server.address", host,
+           "--browser.gatherUsageStats", "false"]
+    if headless:
+        cmd += ["--server.headless", "true"]
+    return cmd
+
+
+def cmd_ui(args):
+    import subprocess
     try:
         import streamlit  # noqa: F401
     except ImportError:
         print("The rules UI needs Streamlit:  pip install -e .[ui]")
         return 1
-    cmd = [sys.executable, "-m", "streamlit", "run", str(app), "--server.port", str(args.port),
-           "--browser.gatherUsageStats", "false"]
-    if args.headless:
-        cmd += ["--server.headless", "true"]
-    print(f"Starting the rules editor on http://localhost:{args.port}  (Ctrl+C to stop)")
-    return subprocess.call(cmd)
+    if args.host not in (LOCAL_ONLY, "localhost", "::1"):
+        print(f"WARNING: listening on {args.host}. The UI has no login and can change rules and start runs, so anyone who can reach "
+              "this computer on that address can use it. Use this only on a network you trust.")
+    print(f"Starting the rules editor on http://{'localhost' if args.host == LOCAL_ONLY else args.host}:{args.port}  (Ctrl+C to stop)")
+    return subprocess.call(ui_command(args.port, args.host, args.headless))
 
 
 def cmd_archive(args):
@@ -222,6 +234,8 @@ def main(argv=None):
     pr.add_argument("--tiles", help="comma-separated OS grid squares to build (default: all of the area's), e.g. tm,tl")
     u = add("ui", cmd_ui, "open the rules editor in your browser")
     u.add_argument("--port", type=int, default=8501)
+    u.add_argument("--host", default=LOCAL_ONLY, help="address to listen on. The default accepts connections from this computer only; "
+                   "the UI has no login, so give 0.0.0.0 only on a network you trust")
     u.add_argument("--headless", action="store_true", help="do not open a browser window")
     ar = add("archive", cmd_archive, "archive/prune old data per the retention policy (dry run unless --apply)")
     ar.add_argument("--apply", action="store_true")

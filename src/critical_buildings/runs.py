@@ -17,7 +17,14 @@ import pandas as pd
 
 from critical_buildings import config, lineage, locks, paths
 from critical_buildings.control.store import ControlError, current_user, now
-from critical_buildings.publish import DELIVERABLES, find_output
+from critical_buildings.paths import (
+    current_run_id,
+    find_output,
+    gold_dir,
+    new_run_id,
+    run_dir,
+)
+from critical_buildings.publish import DELIVERABLES
 
 log = logging.getLogger(__name__)
 
@@ -33,19 +40,7 @@ class RunContext:
 
 
 # ------------------------------------------------------------------ locations and pointers
-def gold_dir(area):
-    return paths.GOLD / area
-
-
-def run_dir(area, run_id):
-    return gold_dir(area) / run_id
-
-
-def current_run_id(area):
-    p = gold_dir(area) / "CURRENT.json"
-    return json.loads(p.read_text(encoding="utf-8"))["run_id"] if p.exists() else None
-
-
+# (gold_dir, run_dir, current_run_id and new_run_id live in paths so other products can find a run without importing this module)
 def set_current(area, run_id):
     gold_dir(area).mkdir(parents=True, exist_ok=True)
     tmp = gold_dir(area) / "CURRENT.json.tmp"
@@ -65,17 +60,6 @@ def load_previous(area):
 
 
 # ------------------------------------------------------------------ lifecycle
-def new_run_id(area, taken=lambda run_id: False, now=None):
-    """<YYYYMMDDTHHMMSS>_<area>. A second run started within the same second would get the same id, so while `taken(id)` says
-    the id is in use the time is moved on a second at a time (ids stay in start order)."""
-    when = now or dt.datetime.now()  # noqa: DTZ005 - local time is intended
-    run_id = when.strftime("%Y%m%dT%H%M%S") + "_" + area
-    while taken(run_id):
-        when += dt.timedelta(seconds=1)
-        run_id = when.strftime("%Y%m%dT%H%M%S") + "_" + area
-    return run_id
-
-
 def start(store, area, run_type, rules, notes="", previous_run_id=None, user=None):
     if run_type not in ("dev", "candidate"):
         raise ControlError("A run is 'dev' or 'candidate'; use the release command to make a release.")

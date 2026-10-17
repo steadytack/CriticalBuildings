@@ -4,78 +4,23 @@ Reads the latest bronze snapshots, clips to the area boundary, classifies OSM an
 loads the authoritative registers (DfE / CQC / NHS ODS) mapped to building types. Pure function of
 (bronze inputs, rule set, area); the lifecycle layer caches it under a build key.
 """
-import functools
 import hashlib
 import json
 import logging
 import shutil
-import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 import shapely
-from shapely.geometry import LineString, Point, Polygon, box
-from shapely.ops import polygonize, unary_union
+from shapely.geometry import box
+from shapely.ops import unary_union
 
 from critical_buildings import config, osm_extract, paths, progress, source_checks
+from critical_buildings.areas import area_boundary, load_elements
 from critical_buildings.control.rules import AREA_TAGS, content_hash
-
-# ====================================================================================================
-# OpenStreetMap geometry: Overpass JSON to GeoDataFrames in British National Grid
-# ====================================================================================================
-
-def _line(geom):
-    return LineString([(p["lon"], p["lat"]) for p in geom]) if geom and len(geom) >= 2 else None
-
-
-def element_geometry(e):
-    """WGS84 shapely geometry for one Overpass element (None if not buildable)."""
-    if e["type"] == "node":
-        return Point(e["lon"], e["lat"])
-    if e["type"] == "way":
-        pts = e.get("geometry") or []
-        if len(pts) >= 4 and pts[0] == pts[-1]:
-            return Polygon([(p["lon"], p["lat"]) for p in pts])
-        ln = _line(pts)
-        return ln.centroid if ln is not None else None
-    if e["type"] == "relation":
-        outer = [_line(m.get("geometry")) for m in e.get("members", []) if m["role"] == "outer" and m["type"] == "way"]
-        inner = [_line(m.get("geometry")) for m in e.get("members", []) if m["role"] == "inner" and m["type"] == "way"]
-        outer = [x for x in outer if x is not None]
-        if not outer:
-            pts = [Point(m["lon"], m["lat"]) for m in e.get("members", []) if m["type"] == "node" and "lon" in m]
-            return unary_union(pts).centroid if pts else None
-        polys = list(polygonize(unary_union(outer)))
-        if not polys:
-            return unary_union(outer).centroid
-        shape = unary_union(polys)
-        holes = list(polygonize(unary_union([x for x in inner if x is not None]))) if inner else []
-        if holes:
-            shape = shape.difference(unary_union(holes))
-        return shape
-    return None
-
-
-def load_elements(path):
-    els = json.loads(Path(path).read_text(encoding="utf-8"))["elements"]
-    rows = []
-    for e in els:
-        g = element_geometry(e)
-        if g is None or g.is_empty:
-            continue
-        rows.append({"osm_id": f"{e['type']}/{e['id']}", "tags": e.get("tags", {}), "geometry": g})
-    return gpd.GeoDataFrame(rows, geometry="geometry", crs=4326).to_crs(27700)
-
-
-def area_boundary(area=paths.DEFAULT_AREA):
-    """Boundary polygon of the area (EPSG:27700), from the bronze OSM boundary snapshot."""
-    g = load_elements(paths.bronze_file("osm_overpass", "area_boundary.json", area=area))
-    boundary = unary_union(g.geometry.buffer(0).values)
-    shapely.prepare(boundary)          # a country's outline has 100,000+ vertices: prepared, 'is this point inside' is fast
-    return boundary
-
+from critical_buildings.postcodes import norm_pc, postcode_points
 
 # ====================================================================================================
 # Applying the rule tags to OSM and OS Open Map Local features
@@ -284,33 +229,6 @@ def map_type(source, row, mapping):
     return None
 
 
-def _norm_pc(x):
-    return str(x).replace(" ", "").upper() if isinstance(x, str) else ""
-
-
-@functools.lru_cache(maxsize=1)
-def _postcode_table():
-    """All Code-Point Open postcodes (about 1.7 million) as a table indexed by normalised postcode, columns EA / NO."""
-    wanted = ("PC", "EA", "NO")          # postcode, easting, northing
-    with zipfile.ZipFile(paths.bronze_file("os_codepoint_open", "codepo_gb.zip")) as z:
-        cols = pd.read_csv(z.open("Doc/Code-Point_Open_Column_Headers.csv"), header=None).iloc[0].tolist()
-        pos = [cols.index(c) for c in wanted]
-        assert pos == sorted(pos), "Code-Point column order changed"        # the reader keeps file order
-        frames = [pd.read_csv(z.open(n), header=None, names=list(wanted), usecols=pos, engine="pyarrow")
-                  for n in z.namelist() if n.startswith("Data/CSV/") and n.endswith(".csv")]
-    cp = pd.concat(frames)
-    cp.index = cp["PC"].str.replace(" ", "", regex=False).str.upper()
-    return cp[~cp.index.duplicated(keep="last")][["EA", "NO"]]
-
-
-def postcode_points(wanted=None):
-    """Postcode -> (easting, northing) from OS Code-Point Open, for the normalised postcodes in `wanted` (all if None)."""
-    table = _postcode_table()
-    if wanted is not None:
-        table = table[table.index.isin(list(wanted))]
-    return dict(zip(table.index, zip(table["EA"], table["NO"], strict=False), strict=False))
-
-
 def _ods():
     """ODS lookups: code -> dict(name, postcode, status, parent, kind) from ets, epraccur and etr."""
     def columns(name, *positions):
@@ -407,14 +325,14 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
                          "geometry": pt})
 
     # ---- NHS ODS trust sites not already known to CQC (located by postcode) ----
-    pc = postcode_points({_norm_pc(o["postcode"]) for o in ods.values() if o["kind"] == "ets"})
+    pc = postcode_points({norm_pc(o["postcode"]) for o in ods.values() if o["kind"] == "ets"})
     for code, o in ods.items():
         if o["kind"] != "ets" or o["status"] != "Active" or code in cqc_ods:
             continue
         t = map_type("NHS ODS", {"Name": o["name"]}, mapping)
         if t in (None, "IGNORE"):
             continue
-        xy = pc.get(_norm_pc(o["postcode"]))
+        xy = pc.get(norm_pc(o["postcode"]))
         if xy is None:
             continue
         pt = gpd.points_from_xy([xy[0]], [xy[1]])[0]
@@ -426,7 +344,7 @@ def load_reference(boundary, mapping, keep_ignored=False, area=paths.DEFAULT_ARE
                          "ods_status": "Active", "ods_parent": o["parent"], "geometry": pt})
     out = gpd.GeoDataFrame(rows, columns=REFERENCE_COLS, geometry="geometry", crs=27700)
     # ODS lists some sites under several codes: keep one record per (name, postcode)
-    key = out.ref_name.str.lower().str.replace(r"[^a-z0-9]", "", regex=True) + out.postcode.map(_norm_pc)
+    key = out.ref_name.str.lower().str.replace(r"[^a-z0-9]", "", regex=True) + out.postcode.map(norm_pc)
     out = out[~((out.ref_source == "NHS ODS") & key.duplicated(keep="first"))].copy()
     out.attrs["dropped"] = dropped
     return out
@@ -466,7 +384,7 @@ def build(rules, area=paths.DEFAULT_AREA):
     progress.note("register records in area", len(ref_all))
     progress.note("register records mapped to a building type", len(ref))
     # gold only looks up the postcodes of register records, so keep just those (not all 1.7 million)
-    postcodes = postcode_points({_norm_pc(p) for p in ref_all.postcode})
+    postcodes = postcode_points({norm_pc(p) for p in ref_all.postcode})
     return SilverTables(area, boundary, osm, os_, os_total, site_cands, ref_all, ref, postcodes)
 
 

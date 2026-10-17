@@ -59,8 +59,7 @@ def bronze_inputs(area=None, only=paths.PIPELINE_SOURCES):
 
 
 def build_lineage(ctx, rules, silver_key, silver_reused, gold, dest, deliverables, settings_hash, area_hash):
-    from critical_buildings.publish import find_output
-    buildings_csv = find_output(dest, "buildings")
+    buildings_csv = paths.find_output(dest, "buildings")
     df = gold.df[~gold.df.Excluded]
     changes = {} if gold.changes is None else gold.changes.groupby("Change").size().to_dict()
     return {

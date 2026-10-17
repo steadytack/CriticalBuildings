@@ -8,6 +8,7 @@ Everything generated lives under data/ (git-ignored):
     data/published/<area>/<release>/         pinned releases;  data/archive/  zipped old runs and snapshots
 Human-governed inputs: settings.yml and governed/ (rules store, text dumps).
 """
+import datetime as dt
 import hashlib
 import json
 import os
@@ -144,3 +145,42 @@ def conformed_lookup(area, name, inputs):
 def conformed_stamp(area, name, inputs):
     """Record which inputs a freshly built conformed table was made from (so conformed_lookup can reuse it later)."""
     (silver_conformed_dir(area) / (name + ".inputs")).write_text(inputs_key(area, inputs), encoding="utf-8")
+
+
+# ------------------------------------------------------------------ gold: one folder per run, and the files in it
+def gold_dir(area):
+    return GOLD / area
+
+
+def run_dir(area, run_id):
+    return gold_dir(area) / run_id
+
+
+def current_run_id(area):
+    """The latest successful run of the area (what CURRENT.json points at), or None."""
+    p = gold_dir(area) / "CURRENT.json"
+    return json.loads(p.read_text(encoding="utf-8"))["run_id"] if p.exists() else None
+
+
+def new_run_id(area, taken=lambda run_id: False, now=None):
+    """<YYYYMMDDTHHMMSS>_<area>. A second run started within the same second would get the same id, so while `taken(id)` says
+    the id is in use the time is moved on a second at a time (ids stay in start order)."""
+    when = now or dt.datetime.now()  # noqa: DTZ005 - local time is intended
+    run_id = when.strftime("%Y%m%dT%H%M%S") + "_" + area
+    while taken(run_id):
+        when += dt.timedelta(seconds=1)
+        run_id = when.strftime("%Y%m%dT%H%M%S") + "_" + area
+    return run_id
+
+
+# Older runs used longer file names (critical_buildings.csv, critical_sites.csv, critical_buildings.gpkg ...); find_output reads both.
+OUTPUT_NAMES = {"buildings": ("buildings.csv", "critical_buildings.csv"), "sites": ("sites.csv", "critical_sites.csv"),
+                "gpkg": ("dataset.gpkg", "critical_buildings.gpkg")}
+
+
+def find_output(folder, kind):
+    """Path of one output ('buildings', 'sites' or 'gpkg') in a run or release folder, in either file layout; None if absent."""
+    for name in OUTPUT_NAMES[kind]:
+        if (Path(folder) / name).exists():
+            return Path(folder) / name
+    return None

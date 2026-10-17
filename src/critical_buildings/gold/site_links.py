@@ -17,7 +17,7 @@ import shapely
 
 from critical_buildings import paths, progress, source_checks
 from critical_buildings.errors import PipelineError
-from critical_buildings.silver import _norm_pc, _postcode_table
+from critical_buildings.postcodes import norm_pc, postcode_table
 
 POSTCODE_MAX_M = 250        # a Code-Point postcode further than this from the site is not offered
 UPRNS_INLINE = 200          # the UPRNs column holds at most this many; UPRN Count is the full number, site_uprns.csv the full list
@@ -110,13 +110,13 @@ def postcodes_for_sites(geometries, register_postcodes, table=None):
 
     register_postcodes: the register's postcode for each site ('' when none; several joined with ' | ' use the first).
     table: Code-Point postcodes indexed by normalised postcode with EA / NO columns (default: the one in bronze)."""
-    table = _postcode_table() if table is None else table
+    table = postcode_table() if table is None else table
     n = len(geometries)
     postcode, method, distance = [""] * n, [""] * n, [None] * n
     for i, text in enumerate(register_postcodes):
         first = str(text or "").split("|")[0].strip()
         if first:
-            postcode[i], method[i] = format_postcode(_norm_pc(first)), "Register"
+            postcode[i], method[i] = format_postcode(norm_pc(first)), "Register"
     todo = [i for i in range(n) if not postcode[i]]
     if todo and len(table):
         geoms = np.asarray([geometries[i] for i in todo], dtype=object)

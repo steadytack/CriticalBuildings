@@ -20,9 +20,8 @@ import shapely
 from pyogrio import read_dataframe
 from pyproj import Transformer
 
-from critical_buildings import paths, runs, source_checks
+from critical_buildings import paths, source_checks
 from critical_buildings.errors import PipelineError
-from critical_buildings.publish import find_output
 
 _TO_BNG = Transformer.from_crs(4326, 27700, always_xy=True)
 _TO_WGS = Transformer.from_crs(27700, 4326, always_xy=True)
@@ -228,9 +227,9 @@ def flood_layer(area, box_wgs, today=None):
 
 def critical_sites(area):
     """(run id, GeoDataFrame(site_id, site_type, importance, geometry)) from the area's current run, or (None, None) when it has none."""
-    run_id = runs.current_run_id(area)
-    folder = runs.run_dir(area, run_id) if run_id else None
-    gpkg = find_output(folder, "gpkg") if folder else None
+    run_id = paths.current_run_id(area)
+    folder = paths.run_dir(area, run_id) if run_id else None
+    gpkg = paths.find_output(folder, "gpkg") if folder else None
     if gpkg is None:
         return None, None
     g = read_dataframe(gpkg, layer="sites", columns=["Site ID", "Site Type", "Operational Importance"])

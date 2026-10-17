@@ -13,7 +13,8 @@ are conventions the team should assign.
 | **Data engineer** | Runs and maintains the pipeline, fetches, archives. | `fetch`, `run`, `release`, `archive`, code changes. |
 | **Consumer** | Uses the published files. | Reads the summary CSV and data dictionary. |
 
-The UI records whatever name is typed in the sidebar; it does **not** authenticate. If you need proof of identity, put the
+The UI records whatever name is typed in the sidebar; it does **not** authenticate, which is why it listens on the local computer only
+(`ui --host` is needed to open it to a network). If you need proof of identity, put the
 repository behind your organisation's access controls and review `governed/control_dump.txt` changes in git (below).
 
 ## Changing the rules

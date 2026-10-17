@@ -408,7 +408,7 @@ def tab_lineage(s, area):
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     st.markdown("**Why is this record the way it is?**")
     st.caption(f"Type a {config.get().product.id_column} (for example BLDG-000123) or part of a name.")
-    path = publish.find_output(run_dir, "buildings")
+    path = paths.find_output(run_dir, "buildings")
     if path is None:
         return
     df = read_table(str(path), path.stat().st_mtime)
@@ -448,7 +448,7 @@ def tab_quality(s, area):
         st.info("No successful run yet.")
         return
     rid = st.selectbox("Run", list(ok["run_id"]), key=f"quality_run_{ok.iloc[0]['run_id']}")
-    path = publish.find_output(runs.run_dir(area, rid), "buildings")
+    path = paths.find_output(runs.run_dir(area, rid), "buildings")
     if path is None:
         st.warning("This run's files are no longer on disk.")
         return

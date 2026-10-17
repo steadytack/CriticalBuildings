@@ -25,7 +25,7 @@ from critical_buildings.gold.merge import (
     strict_similarity,
     strict_similarity_at_least,
 )
-from critical_buildings.silver import _norm_pc
+from critical_buildings.postcodes import norm_pc
 
 
 def _c():
@@ -225,7 +225,7 @@ def attach_reference(recs, sites, ref, tags, boundary, ref_all=None, pc=None, ar
                 keep.append(row.Index)
                 continue
             r = ref.loc[row.ri]
-            xy = pc.get(_norm_pc(r.postcode))
+            xy = pc.get(norm_pc(r.postcode))
             if xy is None:
                 unresolved_notes[row.site_group] = (
                     f"register postcode {r.postcode} is not in Code-Point Open (possibly a new building)")

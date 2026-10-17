@@ -69,7 +69,28 @@ src/critical_buildings/
   gold/             merge (and name matching), sites, reference_match, roles, steps (IDs, overrides, quality, assembly)
   control/          rules store (SQLite), rule set and checks (rules.py), text dump
   ui/               the rules editor (Streamlit)
+  properties/       the UPRN property table (its own command; see below)
+  areas.py  postcodes.py   the area outline and Code-Point postcodes, shared
 ```
+
+### One repository, several products: what depends on what
+
+The repo holds more than one data product: the critical-buildings dataset (`silver.py`, `gold/`, `publish.py`, `runs.py`, `control/`, `ui/`
+and the rest of the pipeline) and the UPRN property table (`properties/`). They share a small **core**:
+
+| Shared core | What it is |
+|---|---|
+| `sources.py`, `source_checks.py` | the source catalogue, fetching, bronze snapshots and checks that a file still has the layout the readers expect |
+| `paths.py`, `config.py` | every location, run folders and the output-file finder, and `settings.yml` |
+| `locks.py`, `lineage.py`, `progress.py`, `errors.py` | the one-operation-at-a-time lock, lineage records, progress reporting, plain-English errors |
+| `areas.py`, `postcodes.py` | an area's outline and the Code-Point postcodes |
+
+**The rule:** a product may import the shared core but nothing from another product, and the core imports no product. `tests/test_architecture.py`
+checks it on every run (and names the file and module when it is broken). The one exception on record is `sources.py`, which builds the
+OpenStreetMap query from the critical-buildings rule tags. The point is that moving a product to its own repository later is then a small job:
+copy its folder, install the core as a package, and replace what it reads from the other product (the property table reads critical sites from
+the critical-buildings run folder) with a released dataset. Until then it is one repository, which keeps one source catalogue, one set of
+downloads and one place for licences.
 
 ## Rules
 
