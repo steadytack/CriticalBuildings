@@ -338,3 +338,51 @@ def test_the_uprn_source_is_fetched_validated_and_checked_before_a_run(isolated_
     from critical_buildings import pipeline
     seeded_store.publish("tester", "test rules")
     assert any("os_open_uprn" in p for p in pipeline.check("suffolk", store=seeded_store))                 # a run needs it
+
+
+def test_property_sources_do_not_change_the_critical_buildings_cache_key_lineage_or_credits(isolated_paths):
+    from critical_buildings import lineage
+    snap = paths.bronze_source_dir("os_open_uprn") / "2026-01-01"
+    snap.mkdir(parents=True)
+    (snap / "osopenuprn_csv.zip").write_bytes(b"x")
+    sources.write_manifest("os_open_uprn", snap, [{"name": "osopenuprn_csv.zip"}])
+    sources.set_latest("os_open_uprn", "2026-01-01")
+    before = paths.bronze_key("suffolk")
+    for source in ("ons_lsoa", "iod2025", "planning_data", "ea_flood_zones"):                      # fetching the property table's sources ...
+        d = paths.bronze_source_dir(source) / "2026-01-01"
+        d.mkdir(parents=True)
+        (d / "x.csv").write_text("a\n1\n", encoding="utf-8")
+        sources.write_manifest(source, d, [{"name": "x.csv"}])
+        sources.set_latest(source, "2026-01-01")
+    assert paths.bronze_key("suffolk") == before                                                  # ... leaves the cache key alone
+    assert {i["source"] for i in lineage.bronze_inputs("suffolk")} == {"os_open_uprn"}             # and the critical run's lineage
+    assert {i["source"] for i in lineage.bronze_inputs("suffolk", only=None)} >= {"ons_lsoa", "ea_flood_zones"}
+    from critical_buildings import dictionary
+    assert {row[0] for row in dictionary._source_dates()}.isdisjoint({"ONS Lower layer Super Output Areas (December 2021) boundaries, generalised (BGC)"})
+
+
+def test_the_property_sources_are_fetched_as_a_group_and_each_page_of_areas_is_asked_for(isolated_paths):
+    rules = type("R", (), {"tags": []})()
+    res = sources.fetch_all(rules, "suffolk", only=["properties"], dry_run=True)
+    assert list(res) == ["uprn", "codepoint", "lsoa", "iod", "planning", "flood"]
+    assert len(res["lsoa"]["files"]) == 18 and res["lsoa"]["files"][0] == "lsoa_000.geojson"             # 35,672 areas, 2,000 to a page
+    assert res["planning"]["files"] == ["conservation-area.csv", "listed-building-outline.csv", "listed-building.csv", "article-4-direction-area.csv"]
+    assert res["flood"]["files"] == ["flood-risk-zone.csv"] and res["iod"]["files"] == ["iod2025_file7.csv"]
+    urls = dict(sources.lsoa_page_urls(sources.load_sources()["ons_lsoa"], 4001))
+    assert list(urls) == ["lsoa_000.geojson", "lsoa_001.geojson", "lsoa_002.geojson"] and "resultOffset=4000" in urls["lsoa_002.geojson"]
+    assert "orderByFields=LSOA21CD" in urls["lsoa_000.geojson"] and "outSR=27700" in urls["lsoa_000.geojson"]
+
+
+@pytest.mark.parametrize("body,ok", [
+    ('{"type": "FeatureCollection", "features": [{"type": "Feature"}]}', True),
+    ('{"type": "FeatureCollection", "features": []}', False),                              # an empty page
+    ('{"error": {"code": 400, "message": "Invalid query"}}', False),                       # the service answers errors with HTTP 200
+    ("<html>busy</html>", False)])
+def test_a_geojson_page_must_hold_features(tmp_path, body, ok):
+    page = tmp_path / "lsoa_000.geojson"
+    page.write_text(body, encoding="utf-8")
+    if ok:
+        sources.validate_download(page)
+    else:
+        with pytest.raises(sources.BadDownload):
+            sources.validate_download(page)

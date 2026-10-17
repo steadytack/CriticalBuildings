@@ -5,6 +5,7 @@
     run                          build the dataset (silver -> gold -> publish)
     control dump|versions|publish    manage the rules store
     runs | release | archive | restore    run history, immutable releases, retention
+    properties                   the UPRN property table: every address point linked to open data (flood, planning, deprivation ...)
     backup                       copy the run history and ID registries (data/state.db) aside
     ui                           the rules editor in your browser
 """
@@ -68,6 +69,18 @@ def cmd_run(args):
     result = pipeline.run(args.area, args.type, args.notes or "", not args.no_reuse, rules_version=args.rules_version)
     reused = " (silver reused)" if result["silver_reused"] else ""
     print(f"run {result['run_id']}: {result['buildings']} buildings in {result['sites']} sites{reused}")
+    print(f"  -> {result['dest']}")
+    return 0
+
+
+def cmd_properties(args):
+    from critical_buildings.properties import build
+    if args.check:
+        problems = build.check(args.area)
+        print("\n".join(f"  - {p}" for p in problems) if problems else "Ready: every source the property table needs is present.")
+        return 1 if problems else 0
+    result = build.build(args.area, args.tiles.split(",") if args.tiles else None)
+    print(f"property table {result['run_id']}: {result['rows']:,} UPRNs in {len(result['tiles'])} grid squares")
     print(f"  -> {result['dest']}")
     return 0
 
@@ -195,7 +208,7 @@ def main(argv=None):
     c_ = add("check", cmd_check, "validate rules, settings and data")
     c_.add_argument("--rules-version", type=int, help="check this published rule set number instead of the latest")
     f = add("fetch", cmd_fetch, "download source data into new bronze snapshots")
-    f.add_argument("--only", help="comma-separated: osm,osmx,os,codepoint,uprn,dfe,cqc,nhs (osmx = the Geofabrik extract, only for areas that set osm_extract)")
+    f.add_argument("--only", help="comma-separated: osm,osmx,os,codepoint,uprn,dfe,cqc,nhs (osmx = the Geofabrik extract, only for areas that set osm_extract); also lsoa,iod,planning,flood, or the group name properties for everything the property table needs")
     f.add_argument("--dry-run", action="store_true", help="show what would be downloaded")
     add("migrate-bronze", cmd_migrate_bronze, "move old shared bronze folders of area-scoped sources to this area")
     r = add("run", cmd_run, "build the dataset into a new gold run folder")
@@ -204,6 +217,9 @@ def main(argv=None):
     r.add_argument("--no-reuse", action="store_true", help="rebuild silver even if a matching build is cached")
     r.add_argument("--rules-version", type=int, help="use this published rule set number instead of the latest")
     add("runs", cmd_runs, "list runs and releases")
+    pr = add("properties", cmd_properties, "build the UPRN property table (every address point linked to open data)")
+    pr.add_argument("--check", action="store_true", help="only say whether every source it needs has been fetched")
+    pr.add_argument("--tiles", help="comma-separated OS grid squares to build (default: all of the area's), e.g. tm,tl")
     u = add("ui", cmd_ui, "open the rules editor in your browser")
     u.add_argument("--port", type=int, default=8501)
     u.add_argument("--headless", action="store_true", help="do not open a browser window")

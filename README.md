@@ -24,6 +24,12 @@ Each run writes a folder with these files (a *release* is a permanent copy of on
 
 The interactive QA map is no longer stored with every run: draw it from the **Data** tab of the UI when you want it.
 
+**A second product: the UPRN property table.** `python -m critical_buildings properties --area suffolk` builds a table with one row for
+every addressable location (UPRN) in an area, linked to open data about it: the building footprint, nearest postcode, census area and
+deprivation scores, conservation area, Article 4 and listed-building status, flood zone, and the nearest critical site. Suffolk is about
+548,000 rows and builds in a minute; it is stored as parquet, not in the critical-buildings release files. See
+[the guide](docs/guide.md#the-uprn-property-table).
+
 ## How it works
 
 ```mermaid

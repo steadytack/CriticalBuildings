@@ -22,7 +22,7 @@ from shapely.geometry import Point, box
 from critical_buildings import paths, sources
 
 AREA = "testland"
-TILE = "tl"
+TILE = "tm"                    # every feature has an easting of 600000 or more, which is OS grid square TM
 BOUNDARY = box(599000, 239000, 602000, 242000)
 _TO_WGS84 = Transformer.from_crs(27700, 4326, always_xy=True)
 
@@ -205,10 +205,13 @@ def _codepoint(dest):
 UPRNS = [(100000000001, 600110, 240110), (100000000002, 600120, 240120), (100000000003, 600130, 240125),
          (100000000011, 600550, 240540), (100000000012, 600600, 240600),
          (100000000021, 601505, 241505), (100000000031, 601005, 241000), (100000000099, 610000, 250000)]
+# two more, in a building that is in no critical site (OS Building b2), for the property table: they share a building
+EXTRA_UPRNS = [(100000000041, 601202, 241202), (100000000042, 601207, 241207)]
 
 
 def _uprn(dest):
-    rows = "".join(f"{u},{x},{y},52.0,1.0\n" for u, x, y in UPRNS)
+    rows = "".join(f"{u},{x},{y},{lat:.8f},{lon:.8f}\n" for u, x, y, lat, lon in
+                   ((u, x, y, *reversed(_TO_WGS84.transform(x, y))) for u, x, y in UPRNS + EXTRA_UPRNS))
     with zipfile.ZipFile(dest / "osopenuprn_csv.zip", "w") as z:
         z.writestr("osopenuprn_202609.csv", "UPRN,X_COORDINATE,Y_COORDINATE,LATITUDE,LONGITUDE\n" + rows)
     return ["osopenuprn_csv.zip"]
@@ -235,3 +238,83 @@ def build_bronze(work, extract=False):
     _snapshot("dfe_gias", _gias, work)
     _snapshot("cqc_hsca", _cqc, work)
     _snapshot("nhs_ods", _nhs, work)
+
+
+# ====================================================================================================
+# The sources the property table adds: census areas, deprivation, planning layers and flood zones
+# ====================================================================================================
+
+def _lon_lat_text(x, y):
+    lon, lat = _TO_WGS84.transform(x, y)
+    return f"{lon:.7f} {lat:.7f}"
+
+
+def _wkt_box(x0, y0, x1, y1):
+    """A British National Grid rectangle as WGS84 well-known text, the way planning.data.gov.uk publishes outlines."""
+    ring = [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+    return "MULTIPOLYGON (((" + ", ".join(_lon_lat_text(x, y) for x, y in ring) + ")))"
+
+
+def _wkt_point(x, y):
+    return f"POINT ({_lon_lat_text(x, y)})"
+
+
+LSOA_WEST, LSOA_EAST = "E01900001", "E01900002"      # split at easting 601250 (the Elm Primary UPRN is east of it, everything else west)
+
+
+def _lsoa(dest):
+    def feature(code, name, x0, x1):
+        ring = [[x0, 239000], [x1, 239000], [x1, 242000], [x0, 242000], [x0, 239000]]
+        return {"type": "Feature", "properties": {"LSOA21CD": code, "LSOA21NM": name}, "geometry": {"type": "Polygon", "coordinates": [ring]}}
+    doc = {"type": "FeatureCollection", "crs": {"type": "name", "properties": {"name": "EPSG:27700"}},
+           "features": [feature(LSOA_WEST, "Testland 001A", 599000, 601250), feature(LSOA_EAST, "Testland 001B", 601250, 602000)]}
+    (dest / "lsoa_000.geojson").write_text(json.dumps(doc), encoding="utf-8")
+    return ["lsoa_000.geojson"]
+
+
+def _iod(dest):
+    cols = {"LSOA code (2021)": [LSOA_WEST, LSOA_EAST], "LSOA name (2021)": ["Testland 001A", "Testland 001B"],
+            "Local Authority District code (2024)": ["E07900001", "E07900001"], "Local Authority District name (2024)": ["Testland", "Testland"],
+            "Index of Multiple Deprivation (IMD) Score": [31.5, 5.25], "Index of Multiple Deprivation (IMD) Rank (where 1 is most deprived)": [4000, 31000],
+            "Index of Multiple Deprivation (IMD) Decile (where 1 is most deprived 10% of LSOAs)": [2, 10]}
+    for i, name in enumerate(["Income", "Employment", "Education, Skills and Training", "Health Deprivation and Disability", "Crime",
+                              "Barriers to Housing and Services", "Living Environment",
+                              "Income Deprivation Affecting Children Index (IDACI)", "Income Deprivation Affecting Older People (IDAOPI)"]):
+        cols[f"{name} Decile (where 1 is most deprived 10% of LSOAs)"] = [1 + i % 9, 10 - i % 9]
+    cols.update({"Total population: mid 2022": [1800, 1500], "Dependent Children aged 0-15: mid 2022": [300, 200],
+                 "Older population aged 60 and over: mid 2022": [400, 600]})
+    pd.DataFrame(cols).to_csv(dest / "iod2025_file7.csv", index=False, encoding="utf-8-sig")
+    return ["iod2025_file7.csv"]
+
+
+def _planning(dest):
+    def write(name, rows, columns):
+        pd.DataFrame(rows, columns=columns).to_csv(dest / f"{name}.csv", index=False)
+    write("conservation-area", [
+        ("conservation-area", "", "Oak Conservation Area", _wkt_box(600500, 240500, 600700, 240650)),
+        ("conservation-area", "2001-01-01", "Ended Area", _wkt_box(600900, 240900, 601100, 241100))],      # ended: must not count
+        ["dataset", "end-date", "name", "geometry"])
+    write("article-4-direction-area", [("article-4-direction-area", "", _wkt_box(601490, 241490, 601520, 241520))],
+          ["dataset", "end-date", "geometry"])
+    write("listed-building-outline", [("listed-building-outline", "", _wkt_box(600098, 240098, 600142, 240132))],
+          ["dataset", "end-date", "geometry"])
+    write("listed-building", [("listed-building", "", "II*", _wkt_point(600128, 240123)), ("listed-building", "", "I", _wkt_point(601900, 241900))],
+          ["dataset", "end-date", "listed-building-grade", "point"])
+    return [f"{n}.csv" for n in ("conservation-area", "listed-building-outline", "listed-building", "article-4-direction-area")]
+
+
+def _flood(dest):
+    rows = [("flood-risk-zone", "", 3, "Fluvial Models", _wkt_box(601480, 241480, 601530, 241530)),
+            ("flood-risk-zone", "", 2, "Fluvial Models", _wkt_box(601400, 241400, 601600, 241600)),
+            ("flood-risk-zone", "", 2, "Tidal Models", _wkt_box(600090, 240090, 600150, 240140))]
+    pd.DataFrame(rows, columns=["dataset", "end-date", "flood-risk-level", "flood-risk-type", "geometry"]).to_csv(dest / "flood-risk-zone.csv", index=False)
+    return ["flood-risk-zone.csv"]
+
+
+def build_property_bronze(work):
+    """Add the sources the property table needs (on top of build_bronze) to the bronze folder."""
+    work = Path(work)
+    _snapshot("ons_lsoa", _lsoa, work)
+    _snapshot("iod2025", _iod, work)
+    _snapshot("planning_data", _planning, work)
+    _snapshot("ea_flood_zones", _flood, work)

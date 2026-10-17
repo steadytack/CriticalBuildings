@@ -7,7 +7,7 @@ Writes the data-dictionary sheets of report.xlsx and ATTRIBUTION.txt
 import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from critical_buildings import config, sources
+from critical_buildings import config, paths, sources
 from critical_buildings.errors import PipelineError
 from critical_buildings.gold import steps
 
@@ -137,6 +137,8 @@ def _source_dates():
     snaps = {m["source"]: m for m in sources.all_manifests()}
     out = []
     for key, cat in catalogue.items():
+        if key not in paths.PIPELINE_SOURCES:                    # credit only the sources this dataset is built from
+            continue
         m = snaps.get(key)
         files = "; ".join(f["name"] for f in m["files"]) if m else ""
         size = round(sum(f["bytes"] for f in m["files"]) / 1e6, 1) if m else 0

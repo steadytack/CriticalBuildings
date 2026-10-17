@@ -80,8 +80,13 @@ def os_layer_paths(layer, tiles=("tg", "tl", "tm"), pin=None, area=DEFAULT_AREA)
 
 
 # ------------------------------------------------------------------ keys / silver
-def bronze_key(area=DEFAULT_AREA, sources=None):
-    """Short content hash of the exact bronze inputs in use (sha256 of every file in each LATEST manifest)."""
+# The sources the critical-buildings pipeline reads. Others in the catalogue (census areas, deprivation, planning and flood layers for the
+# property table) are not inputs to it, so fetching them must not change its cache keys, lineage or credits.
+PIPELINE_SOURCES = ("osm_overpass", "osm_extract", "os_open_map_local", "os_codepoint_open", "os_open_uprn", "dfe_gias", "cqc_hsca", "nhs_ods")
+
+
+def bronze_key(area=DEFAULT_AREA, sources=PIPELINE_SOURCES):
+    """Short content hash of the exact bronze inputs in use (sha256 of every file in each LATEST manifest of `sources`)."""
     parts = []
     for d in sorted(p for p in BRONZE.glob("*") if p.is_dir()):
         if sources and d.name.split("__")[0] not in sources:

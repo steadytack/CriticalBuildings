@@ -162,6 +162,13 @@ def validate_download(path, min_elements=1):
     elif suffix in (".zip", ".ods"):
         if not zipfile.is_zipfile(path):
             raise BadDownload("not a valid zip/ods file")
+    elif suffix == ".geojson":
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, UnicodeDecodeError) as e:
+            raise BadDownload(f"not valid JSON ({e})") from e
+        if not isinstance(doc, dict) or "error" in doc or not doc.get("features"):
+            raise BadDownload("no features in the response" + (f": {doc['error']}" if isinstance(doc, dict) and "error" in doc else ""))
     elif suffix == ".pbf":
         with open(path, "rb") as f:
             if b"OSMHeader" not in f.read(64):
@@ -319,6 +326,44 @@ def fetch_open_map_local(area="suffolk", dry_run=False):
                              note=f"Grid squares: {', '.join(t.upper() for t in tiles)}")
 
 
+def lsoa_page_urls(cat, count):
+    """One request per page of areas: the service returns at most page_size at a time, in a fixed order."""
+    size = int(cat["page_size"])
+    return [(f"lsoa_{i:03d}.geojson",
+             f"{cat['url']}?where=1%3D1&outFields=LSOA21CD,LSOA21NM&outSR=27700&orderByFields=LSOA21CD"
+             f"&resultOffset={off}&resultRecordCount={size}&f=geojson")
+            for i, off in enumerate(range(0, count, size))]
+
+
+def fetch_lsoa(dry_run=False):
+    cat = load_sources()["ons_lsoa"]
+    count = 35672                                         # England and Wales, December 2021; asked of the service for a real fetch
+    if not dry_run:
+        try:
+            r = requests.get(cat["url"], params={"where": "1=1", "returnCountOnly": "true", "f": "json"}, timeout=60, headers=HEADERS)
+            count = int(r.json()["count"])
+        except (requests.RequestException, ValueError, KeyError) as e:
+            raise DownloadError(f"Could not ask the ONS service how many LSOAs there are: {e}") from e
+    specs = [{"name": n, "url": u} for n, u in lsoa_page_urls(cat, count)]
+    return snapshot("ons_lsoa", specs, dry_run=dry_run, note=f"{count} LSOAs in {len(specs)} pages")
+
+
+def fetch_iod(dry_run=False):
+    cat = load_sources()["iod2025"]
+    return snapshot("iod2025", [{"name": "iod2025_file7.csv", "url": cat["url"]}], dry_run=dry_run)
+
+
+def fetch_planning(dry_run=False):
+    cat = load_sources()["planning_data"]
+    specs = [{"name": f"{d}.csv", "url": cat["url"].format(dataset=d)} for d in cat["datasets"]]
+    return snapshot("planning_data", specs, dry_run=dry_run)
+
+
+def fetch_flood_zones(dry_run=False):
+    cat = load_sources()["ea_flood_zones"]
+    return snapshot("ea_flood_zones", [{"name": "flood-risk-zone.csv", "url": cat["url"]}], dry_run=dry_run)
+
+
 def fetch_open_uprn(dry_run=False):
     cat = load_sources()["os_open_uprn"]
     return snapshot("os_open_uprn", [{"name": "osopenuprn_csv.zip", "url": cat["url"]}], dry_run=dry_run)
@@ -386,7 +431,9 @@ def fetch_nhs(dry_run=False):
 # Fetch everything
 # ====================================================================================================
 
-ALL = ("osm", "osmx", "os", "codepoint", "uprn", "dfe", "cqc", "nhs")      # osmx (the Geofabrik extract) only for areas that set osm_extract
+ALL = ("osm", "osmx", "os", "codepoint", "uprn", "dfe", "cqc", "nhs")
+PROPERTY_SOURCES = ("uprn", "codepoint", "lsoa", "iod", "planning", "flood")      # what the property table needs
+GROUPS = {"properties": PROPERTY_SOURCES}                                         # fetch --only properties      # osmx (the Geofabrik extract) only for areas that set osm_extract
 
 
 def fetch_all(rules, area="suffolk", only=None, dry_run=False):
@@ -399,13 +446,18 @@ def fetch_all(rules, area="suffolk", only=None, dry_run=False):
         "os": lambda: fetch_open_map_local(area, dry_run),
         "codepoint": lambda: fetch_codepoint(dry_run),
         "uprn": lambda: fetch_open_uprn(dry_run),
+        "lsoa": lambda: fetch_lsoa(dry_run),
+        "iod": lambda: fetch_iod(dry_run),
+        "planning": lambda: fetch_planning(dry_run),
+        "flood": lambda: fetch_flood_zones(dry_run),
         "dfe": lambda: fetch_dfe(dry_run),
         "cqc": lambda: fetch_cqc(dry_run),
         "nhs": lambda: fetch_nhs(dry_run),
     }
+    only = [n for name in (only or ()) for n in GROUPS.get(name, (name,))] or None        # a group name stands for its sources
     unknown = [n for n in (only or ()) if n not in jobs]
     if unknown:
-        raise PipelineError(f"Unknown source(s): {', '.join(unknown)}. Choose from: {', '.join(ALL)}.")
+        raise PipelineError(f"Unknown source(s): {', '.join(unknown)}. Choose from: {', '.join(jobs)}, or a group: {', '.join(GROUPS)}.")
     out = {}
     with nullcontext() if dry_run else locks.pipeline_lock("fetch"):
         for name in only or [n for n in ALL if n != "osmx" or uses_extract(area)]:
