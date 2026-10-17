@@ -2,7 +2,7 @@
 
 The Overpass API cannot answer a query for a whole country (it times out), but an extract can be read directly with GDAL's OSM
 driver, which streams the file: memory stays small however big the extract is. The result has the same shape as the Overpass
-route in silver.load_elements, a table of (osm_id, tags, geometry), so the classification code does not care where it came from.
+route in areas.load_elements, a table of (osm_id, tags, geometry), so the classification code does not care where it came from.
 
 Only the tags the rules use are kept (plus the name and the building tag), so the reader is told exactly which keys to look at,
 the same way the Overpass query is built from the active rule tags.
@@ -91,7 +91,7 @@ def _tags(row, columns, osm_tags_by_key):
 
 
 def _to_rows(df, layer, osm_tags):
-    """One layer's GDAL rows as (osm_id, tags, geometry) rows in WGS84, geometry made like silver.element_geometry."""
+    """One layer's GDAL rows as (osm_id, tags, geometry) rows in WGS84, geometry made like areas.element_geometry."""
     columns = [c for c in df.columns if c not in ("geometry", "other_tags", "osm_id", "osm_way_id")]
     keys = set(osm_keys(osm_tags))
     rows = []

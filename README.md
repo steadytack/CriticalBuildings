@@ -86,6 +86,9 @@ The output is in `data/gold/suffolk/<run id>/`. The `data/` folder is not in git
 python -m critical_buildings ui         # opens in your browser
 ```
 
+The UI listens on **this computer only**. It has no login and can change rules and start runs, so it is deliberately not reachable from the
+network; `ui --host 0.0.0.0` opens it up, with a warning, for use on a network you trust.
+
 | Tab | For |
 |---|---|
 | **Pipeline** | The pipeline drawn as a graph: sources, stages, releases, coloured by what the latest run did, with source freshness and each stage's counts and steps. |
@@ -118,7 +121,8 @@ the editor. Decisions are saved against the building and survive reruns.
 settings.yml       settings you can tune: thresholds, areas, data sources, the pipeline's stages (one file)
 governed/          control.db = the rules store (committed) and control_dump.txt = a text copy so rule changes show in git diffs
 src/critical_buildings/   the code: sources.py, silver.py, gold/, publish.py (the layers), progress.py (what a run reports),
-                   control/ (rules store), ui/ (the web UI), cli.py
+                   control/ (rules store), ui/ (the web UI), cli.py, and properties/ (the UPRN property table, a second product)
+                   that shares only a small core with the first (rules in docs/guide.md, checked by tests/test_architecture.py)
 tests/             automated tests (unit + an end-to-end regression against a golden baseline)
 docs/              guide.md (how it works, rules, runs, lineage, contributing) and governance.md (roles, checks, licences, decisions)
 data/              (not in git)  bronze/ silver/ gold/ published/ archive/ logs/ and state.db (runs, releases, ID registries)

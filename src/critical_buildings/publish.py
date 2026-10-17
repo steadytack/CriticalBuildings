@@ -1,7 +1,6 @@
 """Publish stage: the delivered files for one run (GeoPackage/CSV outputs, QA workbook and map).
 """
 import logging
-from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
@@ -140,19 +139,9 @@ def write_map(gdf, path):
 # Writing the delivered files
 # ====================================================================================================
 
-# What every run folder contains (used by release/archive and the regression test). Older runs used longer file names
-# (critical_buildings.csv, critical_sites.csv, critical_buildings.gpkg ...); find_output reads both.
+# What every run folder contains (used by release/archive and the regression test). find_output, which reads a run folder in either
+# of the two file layouts, is in paths so that other products can use it too.
 DELIVERABLES = ["dataset.gpkg", "buildings.csv", "sites.csv", "site_uprns.csv", "report.xlsx", "ATTRIBUTION.txt"]
-OUTPUT_NAMES = {"buildings": ("buildings.csv", "critical_buildings.csv"), "sites": ("sites.csv", "critical_sites.csv"),
-                "gpkg": ("dataset.gpkg", "critical_buildings.gpkg")}
-
-
-def find_output(folder, kind):
-    """Path of one output ('buildings', 'sites' or 'gpkg') in a run or release folder, in either file layout; None if absent."""
-    for name in OUTPUT_NAMES[kind]:
-        if (Path(folder) / name).exists():
-            return Path(folder) / name
-    return None
 
 
 def write_outputs(gold, silver, dest, rule_version, today):

@@ -24,22 +24,24 @@ from pyogrio import read_dataframe
 
 from critical_buildings import (
     __version__,
+    areas,
     config,
     lineage,
     locks,
     paths,
+    postcodes,
     progress,
-    runs,
-    silver,
 )
-from critical_buildings.control.store import now
 from critical_buildings.errors import PipelineError
 from critical_buildings.properties import columns as cols
 from critical_buildings.properties import grid, inputs, layers
-from critical_buildings.publish import find_output
 
 REQUIRED = [("os_open_uprn", False), ("os_codepoint_open", False), ("os_open_map_local", True), ("osm_overpass", True),
             ("ons_lsoa", False), ("iod2025", False), ("planning_data", False), ("ea_flood_zones", False)]
+
+
+def now():
+    return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
 
 def properties_dir(area):
@@ -106,7 +108,7 @@ class Context:
         progress.note("flood zone 3 polygons", self.flood.counts["3"])
         progress.note("flood zone 2 polygons", self.flood.counts["2"])
         progress.step("Reading the postcode points (Code-Point Open)")
-        self.postcodes = layers.PostcodeIndex(silver._postcode_table())
+        self.postcodes = layers.PostcodeIndex(postcodes.postcode_table())
         self.site_run, sites = inputs.critical_sites(area)
         if sites is None:
             progress.warn(f"{area} has no current critical-buildings run, so the critical_site columns will be empty. "
@@ -251,9 +253,9 @@ def build(area=paths.DEFAULT_AREA, tiles=None):
 
 def _build(area, tiles):
     started = now()
-    boundary = silver.area_boundary(area)
+    boundary = areas.area_boundary(area)
     squares = [t.upper() for t in (tiles or config.load_area(area)["os_grid_squares"])]
-    run_id = runs.new_run_id(area, lambda r: (properties_dir(area) / r).exists())
+    run_id = paths.new_run_id(area, lambda r: (properties_dir(area) / r).exists())
     dest = properties_dir(area) / run_id
     dest.mkdir(parents=True)
     try:
@@ -303,7 +305,7 @@ def _write_documents(dest, area, run_id, started, ctx, totals, tiles):
     pd.DataFrame(cols.COLUMNS, columns=["column", "group", "description"]).to_csv(dest / "columns.csv", index=False)
     site_credits = None
     if ctx.site_run:
-        credits = find_output(runs.run_dir(area, ctx.site_run), "buildings")
+        credits = paths.find_output(paths.run_dir(area, ctx.site_run), "buildings")
         credits = Path(credits).parent / "ATTRIBUTION.txt" if credits else None
         site_credits = credits.read_text(encoding="utf-8") if credits and credits.exists() else None
     (dest / "ATTRIBUTION.txt").write_text(attribution_text(site_credits), encoding="utf-8")

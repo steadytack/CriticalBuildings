@@ -3,7 +3,7 @@ import zipfile
 
 import pytest
 
-from critical_buildings import paths, silver
+from critical_buildings import paths, postcodes, silver
 
 
 @pytest.fixture
@@ -16,24 +16,24 @@ def codepoint(tmp_path, monkeypatch):
         f.writestr("Data/CSV/ip.csv", 'IP1 1AA,10,615838,244034,E92\n"IP1 1AB",10,615900,244100,E92\nIP1 1AA,10,1,2,E92\n')
         f.writestr("Data/CSV/co.csv", "CO1 1AA,10,600000,225000,E92\n")
     monkeypatch.setattr(paths, "bronze_file", lambda source, name, **kw: z)
-    silver._postcode_table.cache_clear()
+    postcodes.postcode_table.cache_clear()
     yield
-    silver._postcode_table.cache_clear()
+    postcodes.postcode_table.cache_clear()
 
 
 def test_postcode_points_returns_only_the_requested_postcodes(codepoint):
-    got = silver.postcode_points({"IP11AB", "CO11AA", "ZZ99ZZ"})
+    got = postcodes.postcode_points({"IP11AB", "CO11AA", "ZZ99ZZ"})
     assert got == {"IP11AB": (615900, 244100), "CO11AA": (600000, 225000)}      # unknown postcodes are simply absent
 
 
 def test_postcode_points_without_a_filter_returns_everything_and_the_last_duplicate_wins(codepoint):
-    got = silver.postcode_points()
+    got = postcodes.postcode_points()
     assert set(got) == {"IP11AA", "IP11AB", "CO11AA"} and got["IP11AA"] == (1, 2)
 
 
 def test_postcodes_are_matched_after_normalising_spaces_and_case(codepoint):
-    assert silver._norm_pc("ip1 1ab") == "IP11AB"
-    assert silver.postcode_points({silver._norm_pc("ip1 1ab")}) == {"IP11AB": (615900, 244100)}
+    assert postcodes.norm_pc("ip1 1ab") == "IP11AB"
+    assert postcodes.postcode_points({postcodes.norm_pc("ip1 1ab")}) == {"IP11AB": (615900, 244100)}
 
 
 def test_ods_codes_are_read_with_their_trust_and_status(tmp_path, monkeypatch):
