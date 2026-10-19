@@ -293,13 +293,22 @@ df[(df.flood_zone == 3) & (df.imd_decile <= 3)]                          # high 
 | Census area and deprivation | ONS LSOA outlines (2021) and the English Indices of Deprivation 2025 | `lsoa_*`, `lad_*`, `imd_score`, `imd_rank`, `imd_decile`, seven domain deciles, children and older-people indices, LSOA population (total, aged 0-15, aged 60 and over) |
 | Planning | planning.data.gov.uk: conservation areas, Article 4 direction areas, Historic England listed building outlines and points | `conservation_area`(`_name`), `article_4_area`, `listed_in_outline`, `listed_grade`, `listed_distance_m` |
 | Flood | Environment Agency Flood Map for Planning, zones 2 and 3 (rivers and sea) | `flood_zone` (3 high, 2 medium, 1 low), `flood_zone_type` |
+| Energy (EPC), optional | Energy Performance of Buildings Register, domestic certificates (OGL; you download the file) | `epc_rating`, `epc_floor_area_m2`, `epc_age_band`, `epc_property_type`, `epc_walls`, `epc_main_heating` and 12 more, plus `epc_certificates` (how many the UPRN has) |
 | Critical sites | The area's current critical-buildings run | `critical_site_id`, `_type`, `_importance`, `_distance_m` (0 = inside the site outline; otherwise the nearest within 1 km) |
 
 What to know before relying on it:
 
-- **It is every address point, not every home.** OS Open UPRN does not say which are domestic. The clearest open signal for "domestic" is the
-  EPC register (also the source of age, built form, floor area and heating), which needs a free account to download, so it is not
-  included yet. Until then `uprns_in_building` and the building area are the only hints.
+- **It is every address point, not every home.** OS Open UPRN does not say which are domestic. The clearest open signal for "domestic" is an
+  energy certificate (`epc_property_type` says house, flat or bungalow) once you have added the EPC file (below); without it,
+  `uprns_in_building` and the building area are the only hints.
+- **Energy certificates (EPC) are optional and you download the file.** The register needs a GOV.UK One Login, which the tool cannot do for you.
+  Download the domestic certificates as CSV from https://get-energy-performance-data.communities.gov.uk/data-access-options, put the file(s)
+  (.zip or .csv) in `data/inbox/epc_domestic/`, run `python -m critical_buildings fetch --only epc`, and build the table (the web app has the
+  same steps). Certificates are matched on the UPRN only, and the most recently lodged certificate of each UPRN is used. Only some
+  properties have one (built, sold or let since 2008), and a certificate can be out of date, so a blank means "no certificate", not "no
+  home". The data is under the Open Government Licence, but the register's address and postcode fields are Royal Mail restricted, so
+  this tool never reads them. The older and newer spellings of the field names are both understood. The column list and the parsing follow
+  the register's published data dictionary; it has not yet been run on a real download, so check the coverage counts on first use.
 - **Deprivation is a property of the area, not the household:** every UPRN in an LSOA gets the LSOA's scores.
 - **The postcode is a guide.** The nearest postcode centre is often a neighbouring postcode, and 5% of Suffolk's UPRNs have none within 250 m.
 - **Listed status is approximate.** Where Historic England publishes an outline (about 3,000 in Suffolk) `listed_in_outline` is the sure case.

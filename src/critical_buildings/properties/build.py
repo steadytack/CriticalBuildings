@@ -31,6 +31,7 @@ from critical_buildings import (
     paths,
     postcodes,
     progress,
+    sources,
 )
 from critical_buildings.errors import PipelineError
 from critical_buildings.properties import columns as cols
@@ -109,6 +110,7 @@ class Context:
         progress.note("flood zone 2 polygons", self.flood.counts["2"])
         progress.step("Reading the postcode points (Code-Point Open)")
         self.postcodes = layers.PostcodeIndex(postcodes.postcode_table())
+        self.epc = self._epc(area)
         self.site_run, sites = inputs.critical_sites(area)
         if sites is None:
             progress.warn(f"{area} has no current critical-buildings run, so the critical_site columns will be empty. "
@@ -118,6 +120,25 @@ class Context:
             self.site_geoms, self.sites = sites.geometry.to_numpy(), sites
             shapely.prepare(self.site_geoms)
             progress.note("critical sites linked (from run)", f"{len(sites)} ({self.site_run})")
+
+
+    @staticmethod
+    def _epc(area):
+        """The EPC certificates as lookup arrays, or None when no EPC file was ever stored (the epc columns are then empty)."""
+        if not paths.latest_snapshot("epc_domestic"):
+            progress.warn("No EPC file has been stored, so the epc_* columns will be empty. " + sources.EPC_HOW.format(folder=sources.epc_inbox()))
+            return None
+        progress.step("Reading the energy performance certificates (the first time this takes several minutes, then it is kept)")
+        table = inputs.epc_latest(paths.bronze_snapshot("epc_domestic"), paths.SILVER / area / "properties")
+        progress.note("UPRNs with an energy certificate", len(table))
+        out = {"uprn": table["uprn"].to_numpy()}
+        for name in table.column_names:
+            col = table[name].combine_chunks()
+            if name in inputs.EPC_TEXTS:
+                out[name] = (col.indices.fill_null(-1).to_numpy(zero_copy_only=False).astype(np.int32), col.dictionary.to_pylist())
+            elif name != "uprn":
+                out[name] = col.to_numpy(zero_copy_only=False)
+        return out
 
 
 def stage_uprns(zip_path, boundary, tiles, folder):
@@ -217,6 +238,25 @@ def link_tile(tile, table, ctx):
     ftype[only_2] = flood[2][1][in2[only_2]]
     out["flood_zone_type"] = pa.array(ftype, type=pa.string())
 
+    # ---- energy performance certificates (matched on the UPRN)
+    eidx = layers.sorted_index(uprn, ctx.epc["uprn"]) if ctx.epc else np.full(n, -1)
+    found = np.where(eidx >= 0, eidx, 0)
+    for name in cols.NAMES:
+        if not name.startswith("epc_"):
+            continue
+        if not ctx.epc:
+            out[name] = pa.nulls(n, type=pa.int32() if name == "epc_certificates" else pa.string())
+        elif name == "epc_certificates":
+            out[name] = pa.array(np.where(eidx >= 0, ctx.epc[name][found], 0).astype(np.int32))
+        elif name in inputs.EPC_TEXTS:
+            codes, labels = ctx.epc[name]
+            out[name] = layers.coded(np.where(eidx >= 0, codes[found], -1), labels)
+        elif name == "epc_lodged":
+            days = ctx.epc[name].astype("datetime64[D]").astype("int64")
+            out[name] = pa.array(np.where(eidx >= 0, days[found], 0).astype("int32"), mask=eidx < 0, type=pa.int32()).cast(pa.date32())
+        else:
+            out[name] = layers.lookup(eidx, ctx.epc[name], pa.float64())
+
     # ---- critical sites
     if ctx.sites is not None:
         sidx, sdist = layers.nearest(x, y, ctx.site_geoms, cfg.critical_site_near_m)
@@ -239,6 +279,7 @@ def link_tile(tile, table, ctx):
         "conservation_area": int((ca >= 0).sum()), "article_4_area": int(out["article_4_area"].to_numpy(zero_copy_only=False).sum()),
         "listed_in_outline": int(out["listed_in_outline"].to_numpy(zero_copy_only=False).sum()),
         "flood_zone_3": int((zone == 3).sum()), "flood_zone_2": int((zone == 2).sum()),
+        "with_epc": int((eidx >= 0).sum()), "epc_efg": int(np.isin(out["epc_rating"].to_pandas().to_numpy(object), ["E", "F", "G"]).sum()),
         "in_critical_site": int((sdist == 0).sum()), "near_critical_site": int(((sdist > 0) & (sdist <= cfg.critical_site_near_m)).sum())}
 
 
@@ -285,13 +326,13 @@ ATTRIBUTION_SOURCES = ["os_open_uprn", "os_codepoint_open", "os_open_map_local",
                        "osm_overpass"]          # the last only draws the outline of the area the table is clipped to
 
 
-def attribution_text(site_run_attribution=None):
+def attribution_text(site_run_attribution=None, epc=False):
     """The credit lines to include when the table is shared: one block per source it used (from the source catalogue), plus the
     critical-buildings dataset's own credits when the critical_site columns are filled."""
     catalogue = config.load_sources()
     lines = ["ATTRIBUTION AND LICENCES: UPRN property table", "",
              "This table combines the open datasets below. Include these lines when you share or publish it.", ""]
-    for key in ATTRIBUTION_SOURCES:
+    for key in ATTRIBUTION_SOURCES + (["epc_domestic"] if epc else []):
         cat = catalogue[key]
         lines += [f"{cat['name']} - {cat['licence']}", f"  {' '.join(str(cat['attribution']).split())}", ""]
     if site_run_attribution:
@@ -308,11 +349,11 @@ def _write_documents(dest, area, run_id, started, ctx, totals, tiles):
         credits = paths.find_output(paths.run_dir(area, ctx.site_run), "buildings")
         credits = Path(credits).parent / "ATTRIBUTION.txt" if credits else None
         site_credits = credits.read_text(encoding="utf-8") if credits and credits.exists() else None
-    (dest / "ATTRIBUTION.txt").write_text(attribution_text(site_credits), encoding="utf-8")
+    (dest / "ATTRIBUTION.txt").write_text(attribution_text(site_credits, epc=bool(ctx.epc)), encoding="utf-8")
     (dest / "summary.json").write_text(json.dumps(totals, indent=2), encoding="utf-8")
     (dest / "lineage.json").write_text(json.dumps({
         "run_id": run_id, "area": area, "started_at": started, "finished_at": now(), "tool_version": __version__, "git": lineage.git_info(),
         "settings": dict(vars(config.get().properties)),
         "critical_buildings_run": ctx.site_run, "tiles": tiles, "rows": totals.get("rows", 0),
-        "bronze": {"snapshots": lineage.bronze_inputs(area, only=ATTRIBUTION_SOURCES)}, "coverage": totals,
+        "bronze": {"snapshots": lineage.bronze_inputs(area, only=ATTRIBUTION_SOURCES + (["epc_domestic"] if ctx.epc else []))}, "coverage": totals,
         "built_on": dt.date.today().isoformat()}, indent=2, default=str), encoding="utf-8")  # noqa: DTZ011 - local time is intended

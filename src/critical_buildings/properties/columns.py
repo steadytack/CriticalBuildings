@@ -20,7 +20,7 @@ COLUMNS = [
 
     ("postcode", "Postcode", "The nearest Code-Point Open postcode point to the UPRN. A guide, not the address's own postcode: the nearest "
                              "postcode centre is often a neighbouring postcode. OS Open UPRN carries no addresses, so this is the best "
-                             "open link; the EPC register (not yet added) has real address postcodes."),
+                             "open link. The EPC register has the address's own postcode, but it is Royal Mail restricted, so it is not used."),
     ("postcode_distance_m", "Postcode", "Distance from the UPRN to that postcode point, in metres. Blank when none is within 250 m."),
 
     ("lsoa_code", "Area", "Census 2021 Lower layer Super Output Area (about 1,500 people) the point is in, from the generalised ONS outlines."),
@@ -61,6 +61,29 @@ COLUMNS = [
                             "1 in 200 from the sea), 2 = medium (1 in 1,000), 1 = low or none. Ignores flood defences. Not surface water "
                             "or groundwater."),
     ("flood_zone_type", "Flood", "For zone 2 or 3, how the flood zone was modelled (e.g. Fluvial Models, Tidal Models); blank for zone 1."),
+
+    ("epc_certificate_number", "Energy (EPC)", "Number of the latest Energy Performance Certificate lodged for this UPRN, from the EPC register. Matched "
+                                               "on the UPRN only. Blank when the UPRN has no certificate, which is common: only properties built, "
+                                               "sold or let since 2008 have one, and a certificate may be out of date (they last 10 years)."),
+    ("epc_lodged", "Energy (EPC)", "Date that certificate was lodged on the register."),
+    ("epc_rating", "Energy (EPC)", "Current energy rating band, A (best) to G, of that certificate, at the time of the assessment."),
+    ("epc_potential_rating", "Energy (EPC)", "The band the property could reach after the improvements the certificate recommends."),
+    ("epc_efficiency", "Energy (EPC)", "Current energy efficiency value of that certificate, as published in the register's "
+                                      "CURRENT_ENERGY_EFFICIENCY field (see the register's data dictionary for what it measures)."),
+    ("epc_potential_efficiency", "Energy (EPC)", "The same value after the recommended improvements."),
+    ("epc_property_type", "Energy (EPC)", "House, flat, maisonette, bungalow or park home, as recorded on the certificate."),
+    ("epc_built_form", "Energy (EPC)", "Detached, semi-detached, terraced (end or mid), or enclosed, as recorded on the certificate."),
+    ("epc_floor_area_m2", "Energy (EPC)", "Total floor area in square metres, as recorded on the certificate."),
+    ("epc_age_band", "Energy (EPC)", "Construction age band as recorded (for example England and Wales: 1950-1966)."),
+    ("epc_tenure", "Energy (EPC)", "Owner-occupied, rented (social) or rented (private), as recorded at the assessment; often unknown."),
+    ("epc_main_fuel", "Energy (EPC)", "The main heating fuel, as recorded."),
+    ("epc_mains_gas", "Energy (EPC)", "Whether mains gas is available (Y or N), as recorded."),
+    ("epc_habitable_rooms", "Energy (EPC)", "Number of habitable rooms, as recorded."),
+    ("epc_walls", "Energy (EPC)", "The assessor's description of the walls."),
+    ("epc_roof", "Energy (EPC)", "The assessor's description of the roof."),
+    ("epc_main_heating", "Energy (EPC)", "The assessor's description of the main heating."),
+    ("epc_co2_tonnes", "Energy (EPC)", "Estimated current carbon dioxide emissions, in tonnes a year, as recorded."),
+    ("epc_certificates", "Energy (EPC)", "How many certificates the register holds for this UPRN (the latest is the one used). 0 when it has none."),
 
     ("critical_site_id", "Critical sites", "Site ID of the critical-buildings site whose outline contains the point, from the current "
                                           "critical-buildings run. Blank when the point is in no critical site."),

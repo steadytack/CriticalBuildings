@@ -3,8 +3,10 @@
 Everything here returns plain arrays and small frames; the linking itself is in layers.py. The two big sources (the flood zones, 2 GB of
 text, and OS Open UPRN) are streamed in batches, and the flood zones are kept as a conformed table so a rerun does not parse them again.
 """
+import contextlib
 import datetime as dt
 import hashlib
+import io
 import json
 import shutil
 import zipfile
@@ -258,3 +260,140 @@ def uprn_batches(zip_path, block_bytes=64 << 20):
                 raise PipelineError(f"The OS Open UPRN file no longer has the columns {', '.join(UPRN_FIELDS)} ({e}). " + source_checks.ADVICE) from e
             for batch in reader:
                 yield {k: batch.column(c).to_numpy(zero_copy_only=False) for k, c in zip(("uprn", "x", "y", "lat", "lon"), UPRN_FIELDS, strict=True)}
+
+
+# ====================================================================================================
+# Energy performance certificates (EPC register, domestic): the latest certificate of each UPRN
+# ====================================================================================================
+
+# our column -> (the register's field, kind). The address and postcode fields are not read: they are Royal Mail / Ordnance Survey restricted.
+EPC_FIELDS = {
+    "epc_certificate_number": ("CERTIFICATE_NUMBER", "text"), "epc_lodged": ("LODGEMENT_DATE", "date"),
+    "epc_rating": ("CURRENT_ENERGY_RATING", "text"), "epc_potential_rating": ("POTENTIAL_ENERGY_RATING", "text"),
+    "epc_efficiency": ("CURRENT_ENERGY_EFFICIENCY", "number"), "epc_potential_efficiency": ("POTENTIAL_ENERGY_EFFICIENCY", "number"),
+    "epc_property_type": ("PROPERTY_TYPE", "text"), "epc_built_form": ("BUILT_FORM", "text"),
+    "epc_floor_area_m2": ("TOTAL_FLOOR_AREA", "number"), "epc_age_band": ("CONSTRUCTION_AGE_BAND", "text"),
+    "epc_tenure": ("TENURE", "text"), "epc_main_fuel": ("MAIN_FUEL", "text"), "epc_mains_gas": ("MAINS_GAS_FLAG", "text"),
+    "epc_habitable_rooms": ("NUMBER_HABITABLE_ROOMS", "number"), "epc_walls": ("WALLS_DESCRIPTION", "text"),
+    "epc_roof": ("ROOF_DESCRIPTION", "text"), "epc_main_heating": ("MAINHEAT_DESCRIPTION", "text"),
+    "epc_co2_tonnes": ("CO2_EMISSIONS_CURRENT", "number"),
+}
+EPC_NUMBERS = [c for c, (_, kind) in EPC_FIELDS.items() if kind == "number"]
+EPC_TEXTS = [c for c, (_, kind) in EPC_FIELDS.items() if kind == "text"]
+EPC_LODGED_FALLBACK = "LODGEMENT_DATETIME"           # some files carry only this one
+
+
+def _epc_key(name):
+    """A register field name in one spelling: the bulk files have used both CURRENT_ENERGY_RATING and current-energy-rating."""
+    return str(name).strip().upper().replace("-", "_").replace(" ", "_")
+
+
+def epc_certificate_files(snapshot_dir):
+    """[(label, file, member)] for every certificates CSV in the snapshot (member is the name inside a zip, or None): loose .csv files and .csv files inside .zip files. Recommendation
+    files are skipped, and in a zip that has files named certificates only those are read."""
+    found = []
+    for p in sorted(Path(snapshot_dir).glob("*")):
+        if p.suffix.lower() == ".csv" and "recommend" not in p.name.lower():
+            found.append((p.name, p, None))
+        elif p.suffix.lower() == ".zip":
+            with zipfile.ZipFile(p) as z:
+                members = [n for n in sorted(z.namelist()) if n.lower().endswith(".csv") and "recommend" not in n.lower()]
+            named = [n for n in members if "certificates" in n.lower().rsplit("/", 1)[-1]]
+            found += [(f"{p.name}/{n}", p, n) for n in named or members]
+    return found
+
+
+@contextlib.contextmanager
+def _epc_open(path, member):
+    if member is None:
+        with open(path, "rb") as f:
+            yield f
+    else:
+        with zipfile.ZipFile(path) as z, z.open(member) as f:
+            yield f
+
+
+def _epc_batches(path, member, label):
+    """Pandas frames of text columns (our names) from one certificates file, a batch at a time; rows without a UPRN are dropped."""
+    with _epc_open(path, member) as f:
+        head = f.readline().decode("utf-8-sig", errors="replace").rstrip("\r\n")
+    names = pd.read_csv(io.StringIO(head), nrows=0).columns.tolist() if head else []
+    actual = {_epc_key(n): n for n in names}
+    if "UPRN" not in actual or not any(theirs in actual for theirs, _ in EPC_FIELDS.values()):
+        raise PipelineError(f"The EPC file {label} does not look like the register's domestic certificates: it has no UPRN column or none of "
+                            f"the certificate fields (it has {', '.join(names[:8])} ...). " + source_checks.ADVICE)
+    wanted = {"uprn": actual["UPRN"]}
+    for ours, (theirs, _) in EPC_FIELDS.items():
+        if ours == "epc_lodged":
+            theirs = theirs if theirs in actual else EPC_LODGED_FALLBACK
+        if theirs in actual:
+            wanted[ours] = actual[theirs]
+    with _epc_open(path, member) as f:
+        reader = pacsv.open_csv(f, read_options=pacsv.ReadOptions(block_size=64 << 20), convert_options=pacsv.ConvertOptions(
+            include_columns=list(wanted.values()), column_types={c: pa.string() for c in wanted.values()}))
+        for batch in reader:
+            frame = batch.to_pandas().rename(columns={v: k for k, v in wanted.items()})
+            frame["uprn"] = pd.to_numeric(frame["uprn"], errors="coerce")
+            frame = frame[frame["uprn"].notna()].copy()
+            frame["uprn"] = frame["uprn"].astype("int64")
+            yield frame
+
+
+def epc_reduce(frames):
+    """One row per UPRN (its most recently lodged certificate) as an arrow table of our EPC columns plus epc_certificates (how many the
+    UPRN has), sorted by UPRN. Text is turned into small integer codes as each batch arrives, so 25 million certificates of repeated labels
+    cost a couple of gigabytes, not tens."""
+    labels = {c: {} for c in EPC_TEXTS}                                          # per column: label -> code, in order of first sight
+    parts = []
+    for frame in frames:
+        for c in EPC_FIELDS:
+            if c not in frame:
+                frame[c] = None
+        frame = frame[["uprn", *EPC_FIELDS]].replace({"": None})
+        frame["epc_lodged"] = frame["epc_lodged"].str[:10]                        # ISO text sorts like dates; this also drops a time of day
+        for c in EPC_NUMBERS:
+            frame[c] = pd.to_numeric(frame[c], errors="coerce")
+        for c in EPC_TEXTS:
+            cat = frame[c].astype("category")
+            ids = np.array([labels[c].setdefault(v, len(labels[c])) for v in cat.cat.categories], dtype=np.int32)
+            codes = cat.cat.codes.to_numpy()
+            frame[c] = np.where(codes >= 0, ids[np.where(codes >= 0, codes, 0)] if len(ids) else 0, -1).astype(np.int32)
+        parts.append(frame)
+    if not parts:
+        return None
+    frame = pd.concat(parts, ignore_index=True)
+    del parts
+    frame["epc_certificates"] = frame.groupby("uprn")["uprn"].transform("size").astype("int32")
+    frame["_lodged"] = frame["epc_lodged"].fillna("")
+    frame["_row"] = np.arange(len(frame))
+    frame = frame.sort_values(["uprn", "_lodged", "_row"], ascending=[True, False, False], kind="stable").drop_duplicates("uprn", keep="first")
+    columns = {"uprn": pa.array(frame["uprn"].to_numpy())}
+    for c in EPC_TEXTS:
+        codes = frame[c].to_numpy()
+        columns[c] = pa.DictionaryArray.from_arrays(pa.array(np.where(codes < 0, 0, codes), mask=codes < 0, type=pa.int32()),
+                                                    pa.array(list(labels[c]), type=pa.string()))
+    columns["epc_lodged"] = pa.array(pd.to_datetime(frame["epc_lodged"], errors="coerce"), type=pa.timestamp("s")).cast(pa.date32())
+    for c in EPC_NUMBERS:
+        columns[c] = pa.array(frame[c].to_numpy(float), from_pandas=True)
+    columns["epc_certificates"] = pa.array(frame["epc_certificates"].to_numpy())
+    return pa.table(columns)
+
+
+def epc_latest(snapshot_dir, cache_folder):
+    """The latest certificate per UPRN from an EPC snapshot as an arrow table, cached as parquet (keyed by the snapshot's file hashes)."""
+    manifest = json.loads((Path(snapshot_dir) / "_manifest.json").read_text(encoding="utf-8"))
+    key = hashlib.sha256("|".join(f"{f['name']}:{f['sha256']}" for f in manifest["files"]).encode()).hexdigest()[:12]
+    cached = Path(cache_folder) / f"epc_{key}.parquet"
+    if cached.exists():
+        return pq.read_table(cached)
+    files = epc_certificate_files(snapshot_dir)
+    if not files:
+        raise PipelineError("The EPC snapshot holds no certificates CSV (a .csv file, or a .zip holding one). " + source_checks.ADVICE)
+    table = epc_reduce(frame for label, path, member in files for frame in _epc_batches(path, member, label))
+    if table is None or not len(table):
+        raise PipelineError("The EPC certificates held no rows with a UPRN. " + source_checks.ADVICE)
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cached.with_suffix(".tmp")
+    pq.write_table(table, tmp, compression="zstd")
+    tmp.replace(cached)
+    return table

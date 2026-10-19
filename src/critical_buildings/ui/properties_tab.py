@@ -9,7 +9,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from critical_buildings import paths
+from critical_buildings import paths, sources
 from critical_buildings.properties import build
 from critical_buildings.ui import flow, jobs, logic, views
 from critical_buildings.ui import properties_logic as pl
@@ -42,7 +42,8 @@ def _breakdown(table_dir, filters_json, column):
 
 @st.cache_data(show_spinner="Finding properties ...", ttl=900)
 def _sample(table_dir, filters_json, n):
-    return pl.sample(pl.open_table(table_dir), pl.expression(json.loads(filters_json)), pl.DISPLAY_COLUMNS, n)
+    dataset = pl.open_table(table_dir)
+    return pl.sample(dataset, pl.expression(json.loads(filters_json)), pl.display_columns(dataset), n)
 
 
 # ------------------------------------------------------------------------------------------------ the tab
@@ -75,7 +76,8 @@ def tab_properties(s, area):
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**1. Fetch the property sources**")
-        st.caption("Census areas, deprivation, planning layers and flood zones (about 2.4 GB the first time; later only what changed).")
+        st.caption("Census areas, deprivation, planning layers and flood zones (about 2.4 GB the first time; later only what changed). "
+                   "Energy certificates (EPC) are optional and downloaded by you, see below.")
         if st.button("Fetch the property sources", disabled=busy):
             jobs.start_job("Fetch the property sources", "fetch", "--area", area, "--only", "properties")
             st.rerun()
@@ -86,6 +88,28 @@ def tab_properties(s, area):
         if st.button("Build the property table", type="primary", disabled=busy or bool(problems)):
             jobs.start_job("Build the property table", "properties", "--area", area)
             st.rerun()
+
+    with st.expander("Energy certificates (EPC): optional, you download the file"):
+        inbox = sources.epc_inbox()
+        stored = paths.latest_snapshot("epc_domestic")
+        st.markdown("\n".join([
+            "The EPC register needs a GOV.UK One Login to download, which this app cannot do for you. To add energy ratings, floor area, age and "
+            "heating to the table:",
+            "",
+            "1. Sign in at [the register](https://get-energy-performance-data.communities.gov.uk/data-access-options) and download the **domestic "
+            "certificates** as CSV.",
+            f"2. Put the file(s) (a .zip or .csv) in `{inbox}`.",
+            "3. Press **Fetch the property sources** above (or `python -m critical_buildings fetch --only epc`), then build the table.",
+            "",
+            "Only the UPRN and certificate fields are used. The address and postcode fields are Royal Mail restricted, so they are never read "
+            "into the table."]))
+        files = sources.epc_files()
+        if stored:
+            st.success(f"EPC file stored: snapshot {stored}.")
+        if files:
+            st.info(f"{len(files)} file(s) waiting in the inbox: {', '.join(p.name for p in files)}")
+        elif not stored:
+            st.warning("No EPC file has been placed yet, so the epc_* columns are empty.")
 
     with st.expander("How the table is made"):
         rows = logic.source_rows(area, only=build.ATTRIBUTION_SOURCES)
@@ -129,8 +153,16 @@ def explorer(latest):
     article4 = b[1].checkbox("In an Article 4 area", key="prop_a4")
     listed = b[2].checkbox("Inside a listed building outline", key="prop_listed")
     critical = CRITICAL_CHOICES[b[3].selectbox("Critical sites", list(CRITICAL_CHOICES), key="prop_critical")]
+    has_epc, ratings = False, []
+    if pl.has_epc_columns(pl.open_table(table_dir)):
+        e = st.columns(3)
+        has_epc = e[0].checkbox("Has an energy certificate (EPC)", key="prop_has_epc")
+        ratings = e[1].multiselect("EPC rating (A best, G worst)", list("ABCDEFG"), key="prop_epc")
+    else:
+        st.caption("This table was built before energy certificates (EPC) were added. Build it again to get the epc_* columns and filters.")
     filters = {"district": None if district == "Whole area" else district, "flood_min": FLOOD_CHOICES[flood], "decile": list(decile),
-               "conservation_area": conservation, "article_4_area": article4, "listed_in_outline": listed, "critical": critical}
+               "conservation_area": conservation, "article_4_area": article4, "listed_in_outline": listed, "critical": critical,
+               "has_epc": has_epc, "epc_ratings": ratings}
     if critical:
         d = st.columns(3)
         if critical == "within":
@@ -164,7 +196,7 @@ def explorer(latest):
 
     st.markdown("**Download**")
     if st.button(f"Prepare a CSV of the matching UPRNs (up to {pl.EXPORT_LIMIT:,} rows)", key="prop_prepare"):
-        data, cut = pl.export_csv(pl.open_table(table_dir), pl.expression(filters), pl.DISPLAY_COLUMNS)
+        data, cut = pl.export_csv(pl.open_table(table_dir), pl.expression(filters), pl.display_columns(pl.open_table(table_dir)))
         st.session_state["prop_download"] = (fj, data, cut)
     ready = st.session_state.get("prop_download")
     if ready and ready[0] == fj:

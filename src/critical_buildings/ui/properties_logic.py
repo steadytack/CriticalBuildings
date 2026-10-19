@@ -13,7 +13,7 @@ import pyarrow.dataset as ds
 from critical_buildings import paths
 from critical_buildings.properties import build
 
-DISPLAY_COLUMNS = ["uprn", "postcode", "lad_name", "lsoa_code", "imd_decile", "flood_zone", "conservation_area", "article_4_area",
+DISPLAY_COLUMNS = ["uprn", "postcode", "lad_name", "epc_rating", "epc_property_type", "epc_floor_area_m2", "epc_age_band", "lsoa_code", "imd_decile", "flood_zone", "conservation_area", "article_4_area",
                    "listed_in_outline", "listed_grade", "building_id", "uprns_in_building", "critical_site_id", "critical_site_type",
                    "critical_site_importance", "critical_site_distance_m", "easting", "northing", "latitude", "longitude"]
 EXPORT_LIMIT = 200_000
@@ -22,7 +22,8 @@ LINKS = [("In a building footprint", "in_building"), ("Has a postcode within 250
          ("In a conservation area", "conservation_area"), ("In an Article 4 direction area", "article_4_area"),
          ("Inside a listed building outline", "listed_in_outline"), ("In flood zone 3 (high)", "flood_zone_3"),
          ("In flood zone 2 (medium)", "flood_zone_2"), ("Inside a critical site", "in_critical_site"),
-         ("Within 1 km of a critical site (includes those inside)", "near_critical_site")]
+         ("Within 1 km of a critical site (includes those inside)", "near_critical_site"),
+         ("Has an energy certificate (EPC)", "with_epc"), ("EPC rating E, F or G", "epc_efg")]
 
 
 # ---------------------------------------------------------------- the latest table
@@ -50,6 +51,9 @@ def out_of_date(area, latest):
         reasons.append(f"There is a newer critical-buildings run ({current}); the critical_site columns are from {latest['critical_run'] or 'none'}.")
     elif not latest["critical_run"] and current:
         reasons.append("The critical_site columns are empty because there was no critical-buildings run when this was built.")
+    used = {s["source"] for s in latest["lineage"].get("bronze", {}).get("snapshots", [])}
+    if "epc_domestic" not in used and paths.latest_snapshot("epc_domestic"):
+        reasons.append("An EPC file has been stored since this table was built, so the epc_* columns are empty.")
     for snap in latest["lineage"].get("bronze", {}).get("snapshots", []):
         scoped = snap.get("area")
         newest = paths.latest_snapshot(snap["source"], scoped)
@@ -67,6 +71,16 @@ def coverage_rows(summary):
 # ---------------------------------------------------------------- querying
 def open_table(table_dir):
     return ds.dataset(Path(table_dir), format="parquet", partitioning="hive")
+
+
+def display_columns(dataset):
+    """The display columns this table has (a table built before the EPC columns were added lacks them)."""
+    have = set(dataset.schema.names)
+    return [c for c in DISPLAY_COLUMNS if c in have]
+
+
+def has_epc_columns(dataset):
+    return "epc_rating" in dataset.schema.names
 
 
 def districts(dataset):
@@ -93,6 +107,10 @@ def expression(f):
     for flag in ("conservation_area", "article_4_area", "listed_in_outline"):
         if f.get(flag):
             parts.append(pc.field(flag))
+    if f.get("epc_ratings"):
+        parts.append(pc.field("epc_rating").cast(pa.string()).isin(list(f["epc_ratings"])))
+    if f.get("has_epc"):
+        parts.append(pc.field("epc_certificates") > 0)
     if f.get("critical") == "inside":
         parts.append(pc.field("critical_site_distance_m") == 0)
     elif f.get("critical") == "within":

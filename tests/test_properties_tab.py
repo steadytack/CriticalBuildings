@@ -97,3 +97,11 @@ def test_the_property_table_has_its_own_app_that_says_which_pipeline_it_is():
     critical.run()
     assert not critical.exception, [e.value for e in critical.exception]
     assert "Properties" not in [t.label for t in critical.tabs] and critical.title[0].value == "Critical Buildings"
+
+
+def test_the_epc_filters_are_offered_and_the_inbox_instructions_are_shown(table):  # noqa: F811
+    at = run()
+    assert [c.label for c in at.checkbox if "EPC" in c.label] == ["Has an energy certificate (EPC)"] and at.multiselect(key="prop_epc")
+    at.checkbox(key="prop_has_epc").check().run()
+    assert not at.exception and any("No UPRNs match" in i.value for i in at.info)                  # the synthetic table was built without an EPC file
+    assert any("GOV.UK One Login" in m.value for m in at.markdown) and any("No EPC file has been placed yet" in w.value for w in at.warning)

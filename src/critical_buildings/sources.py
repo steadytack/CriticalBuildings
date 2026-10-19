@@ -226,17 +226,22 @@ def _unique_snapshot_dir(source_dir, today):
 
 
 def snapshot(source, specs, area=None, dry_run=False, note=""):
-    """specs: list of dicts {name, url, post_data(optional)}. Returns {'status': 'new'|'unchanged'|'dry-run', ...}."""
+    """specs: list of dicts {name, url, post_data(optional)}, or {name, path} to store a file you downloaded yourself.
+    Returns {'status': 'new'|'unchanged'|'dry-run', ...}."""
     source_dir = paths.bronze_source_dir(source, area)
     if dry_run:
         for s in specs:
-            log.info("[dry run] %s <- %s", s["name"], s["url"])
+            log.info("[dry run] %s <- %s", s["name"], s.get("url") or s["path"])
         return {"status": "dry-run", "files": [s["name"] for s in specs]}
     source_dir.mkdir(parents=True, exist_ok=True)
     tmp = source_dir / f"_tmp_{uuid.uuid4().hex[:8]}"
     tmp.mkdir()
     try:
         for s in specs:
+            if "path" in s:                                   # a file you downloaded yourself (a source that needs a sign-in)
+                log.info("storing %s", s["name"])
+                shutil.copy2(s["path"], tmp / s["name"])
+                continue
             log.info("downloading %s", s["name"])
             http_download(s["url"], tmp / s["name"], post_data=s.get("post_data"),
                           validate=lambda p, s=s: validate_download(p, s.get("min_elements", 1)))
@@ -249,7 +254,7 @@ def snapshot(source, specs, area=None, dry_run=False, note=""):
                 return {"status": "unchanged", "snapshot": latest}
         dest = _unique_snapshot_dir(source_dir, dt.date.today())  # noqa: DTZ011 - local time is intended
         shutil.move(str(tmp), str(dest))
-        write_manifest(source, dest, [{"name": s["name"], "url": s["url"]} for s in specs], area=area, note=note)
+        write_manifest(source, dest, [{"name": s["name"], "url": s.get("url", "")} for s in specs], area=area, note=note)
         set_latest(source, dest.name, area)
         log.info("%s: new snapshot %s", source, dest.name)
         return {"status": "new", "snapshot": dest.name}
@@ -374,6 +379,31 @@ def fetch_codepoint(dry_run=False):
     return snapshot("os_codepoint_open", [{"name": "codepo_gb.zip", "url": cat["url"]}], dry_run=dry_run)
 
 
+EPC_INBOX = ("inbox", "epc_domestic")
+EPC_HOW = ("Sign in at https://get-energy-performance-data.communities.gov.uk/data-access-options (a GOV.UK One Login), download the domestic "
+           "certificates as CSV, and put the file(s) (.zip or .csv) in {folder}. Then run: python -m critical_buildings fetch --only epc")
+
+
+def epc_inbox():
+    return paths.DATA.joinpath(*EPC_INBOX)
+
+
+def epc_files():
+    """The files you have placed in the EPC inbox (.csv and .zip; a recommendations file is not needed but harmless)."""
+    folder = epc_inbox()
+    return sorted(p for p in folder.glob("*") if p.suffix.lower() in (".csv", ".zip")) if folder.exists() else []
+
+
+def fetch_epc(dry_run=False):
+    """Store what is in the EPC inbox as a snapshot. The register needs a GOV.UK One Login to download, which this tool cannot do for
+    you, so this is the one source you place by hand; nothing in the inbox is not an error (the property table just has no EPC columns)."""
+    files = epc_files()
+    if not files:
+        return {"status": "skipped", "note": "no EPC file placed. " + EPC_HOW.format(folder=epc_inbox())}
+    return snapshot("epc_domestic", [{"name": p.name, "path": p} for p in files], dry_run=dry_run,
+                    note=f"{len(files)} file(s) placed in {epc_inbox()}")
+
+
 # ====================================================================================================
 # Authoritative registers: DfE GIAS, CQC active locations, NHS ODS
 # ====================================================================================================
@@ -432,7 +462,7 @@ def fetch_nhs(dry_run=False):
 # ====================================================================================================
 
 ALL = ("osm", "osmx", "os", "codepoint", "uprn", "dfe", "cqc", "nhs")
-PROPERTY_SOURCES = ("uprn", "codepoint", "lsoa", "iod", "planning", "flood")      # what the property table needs
+PROPERTY_SOURCES = ("uprn", "codepoint", "lsoa", "iod", "planning", "flood", "epc")      # what the property table uses (epc is optional)
 GROUPS = {"properties": PROPERTY_SOURCES}                                         # fetch --only properties      # osmx (the Geofabrik extract) only for areas that set osm_extract
 
 
@@ -450,6 +480,7 @@ def fetch_all(rules, area="suffolk", only=None, dry_run=False):
         "iod": lambda: fetch_iod(dry_run),
         "planning": lambda: fetch_planning(dry_run),
         "flood": lambda: fetch_flood_zones(dry_run),
+        "epc": lambda: fetch_epc(dry_run),
         "dfe": lambda: fetch_dfe(dry_run),
         "cqc": lambda: fetch_cqc(dry_run),
         "nhs": lambda: fetch_nhs(dry_run),
