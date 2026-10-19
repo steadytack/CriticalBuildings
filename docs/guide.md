@@ -269,7 +269,8 @@ python -m critical_buildings properties --area suffolk   # about a minute for Su
 python -m critical_buildings properties --area england   # about 30 minutes for England's 35.7 million UPRNs (needs about 10 GB of memory)
 ```
 
-In the web UI the **Properties** tab does all of this without the command line: it fetches the property sources and builds the table as
+In the web UI the property table has its own app, `python -m critical_buildings properties-ui` (port 8502, separate from the
+critical-buildings app on 8501, so the two pipelines are never mixed up). It does all of this without the command line: it fetches the property sources and builds the table as
 background jobs, says when a newer critical-buildings run or source snapshot makes the table out of date, shows what each link covers, and
 explores the table (district, flood zone, deprivation, planning status, nearest critical site) with a map and a CSV download of up to
 200,000 rows. It reads the parquet through pyarrow, so it stays quick for England.

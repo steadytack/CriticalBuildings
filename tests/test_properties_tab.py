@@ -81,3 +81,19 @@ def test_with_no_table_it_says_so_and_the_build_waits_for_the_sources(synthetic)
     assert any("Cannot build yet" in e.value and "ons_lsoa" in e.value for e in at.error)
     assert next(b for b in at.button if b.label == "Build the property table").disabled
     assert not next(b for b in at.button if b.label == "Fetch the property sources").disabled
+
+
+def test_the_property_table_has_its_own_app_that_says_which_pipeline_it_is():
+    from pathlib import Path
+
+    from critical_buildings.ui import properties_app
+    at = AppTest.from_file(properties_app.__file__, default_timeout=120)
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.title[0].value == "UPRN Property Table" and [t.label for t in at.tabs] == ["Property table", "Help"]
+    assert not any("Rules" in t.label or "Publish" in t.label for t in at.tabs) and Path(properties_app.__file__).name == "properties_app.py"
+    assert any("critical-buildings pipeline has its own" in c.value for c in at.sidebar.caption)
+    critical = AppTest.from_file(str(Path(properties_app.__file__).with_name("app.py")), default_timeout=120)
+    critical.run()
+    assert not critical.exception, [e.value for e in critical.exception]
+    assert "Properties" not in [t.label for t in critical.tabs] and critical.title[0].value == "Critical Buildings"

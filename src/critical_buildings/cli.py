@@ -7,7 +7,8 @@
     runs | release | archive | restore    run history, immutable releases, retention
     properties                   the UPRN property table: every address point linked to open data (flood, planning, deprivation ...)
     backup                       copy the run history and ID registries (data/state.db) aside
-    ui                           the rules editor in your browser
+    ui                           the critical-buildings app (rules editor) in your browser
+    properties-ui                the UPRN property table app in your browser
 """
 import argparse
 import logging
@@ -102,30 +103,34 @@ def cmd_runs(args):
 LOCAL_ONLY = "127.0.0.1"
 
 
-def ui_command(port, host=LOCAL_ONLY, headless=False):
+def ui_command(port, host=LOCAL_ONLY, headless=False, app="app.py"):
     """The command that starts the web UI. It listens on this computer only unless a host is given: Streamlit's own default is every
     network interface, and the UI has no login but can edit the rules and start runs."""
     from pathlib import Path
-    app = Path(__file__).parent / "ui" / "app.py"
-    cmd = [sys.executable, "-m", "streamlit", "run", str(app), "--server.port", str(port), "--server.address", host,
+    script = Path(__file__).parent / "ui" / app
+    cmd = [sys.executable, "-m", "streamlit", "run", str(script), "--server.port", str(port), "--server.address", host,
            "--browser.gatherUsageStats", "false"]
     if headless:
         cmd += ["--server.headless", "true"]
     return cmd
 
 
-def cmd_ui(args):
+def cmd_ui(args, app="app.py", name="the rules editor"):
     import subprocess
     try:
         import streamlit  # noqa: F401
     except ImportError:
-        print("The rules UI needs Streamlit:  pip install -e .[ui]")
+        print("The web UI needs Streamlit:  pip install -e .[ui]")
         return 1
     if args.host not in (LOCAL_ONLY, "localhost", "::1"):
         print(f"WARNING: listening on {args.host}. The UI has no login and can change rules and start runs, so anyone who can reach "
               "this computer on that address can use it. Use this only on a network you trust.")
-    print(f"Starting the rules editor on http://{'localhost' if args.host == LOCAL_ONLY else args.host}:{args.port}  (Ctrl+C to stop)")
-    return subprocess.call(ui_command(args.port, args.host, args.headless))
+    print(f"Starting {name} on http://{'localhost' if args.host == LOCAL_ONLY else args.host}:{args.port}  (Ctrl+C to stop)")
+    return subprocess.call(ui_command(args.port, args.host, args.headless, app))
+
+
+def cmd_properties_ui(args):
+    return cmd_ui(args, "properties_app.py", "the property table app")
 
 
 def cmd_archive(args):
@@ -237,6 +242,10 @@ def main(argv=None):
     u.add_argument("--host", default=LOCAL_ONLY, help="address to listen on. The default accepts connections from this computer only; "
                    "the UI has no login, so give 0.0.0.0 only on a network you trust")
     u.add_argument("--headless", action="store_true", help="do not open a browser window")
+    pu = add("properties-ui", cmd_properties_ui, "open the UPRN property table app in your browser")
+    pu.add_argument("--port", type=int, default=8502)
+    pu.add_argument("--host", default=LOCAL_ONLY, help="as for ui: the default accepts connections from this computer only")
+    pu.add_argument("--headless", action="store_true", help="do not open a browser window")
     ar = add("archive", cmd_archive, "archive/prune old data per the retention policy (dry run unless --apply)")
     ar.add_argument("--apply", action="store_true")
     rs_ = add("restore", cmd_restore, "bring an archived gold run or bronze snapshot back")
