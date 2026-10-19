@@ -247,6 +247,19 @@ sources:
     refresh: quarterly
     owner: data steward
 
+  epc_domestic:
+    name: Energy Performance of Buildings Register, domestic certificates (MHCLG)
+    kind: manual                             # needs a GOV.UK One Login to download, so you place the file in data/inbox/epc_domestic/ yourself
+    url: "https://get-energy-performance-data.communities.gov.uk/data-access-options"
+    licence: Open Government Licence v3.0 (the address and postcode fields are Royal Mail / Ordnance Survey restricted and are not used)
+    attribution: >-
+      Contains public sector information licensed under the Open Government Licence v3.0.
+      Source: Ministry of Housing, Communities and Local Government, Energy Performance of Buildings Register.
+      Address and postcode fields are not included
+    uses: The latest energy certificate of each property (rating, floor area, age, construction, heating), linked by UPRN
+    refresh: quarterly (download the bulk file again)
+    owner: data steward
+
   dfe_gias:
     name: DfE Get Information About Schools
     kind: download

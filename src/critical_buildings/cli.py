@@ -43,7 +43,7 @@ def cmd_fetch(args):
     results = sources.fetch_all(rules, args.area, only, args.dry_run)
     for name, res in results.items():
         print(f"{name}: {res['status']}" + (f" ({res['snapshot']})" if "snapshot" in res else "")
-              + (f" - {res['error']}" if "error" in res else ""))
+              + (f" - {res['error']}" if "error" in res else "") + (f" - {res['note']}" if res.get("note") and res["status"] == "skipped" else ""))
     failed = [n for n, res in results.items() if res["status"] == "failed"]
     if failed:
         print(f"{len(failed)} of {len(results)} source(s) could not be fetched: {', '.join(failed)}. "

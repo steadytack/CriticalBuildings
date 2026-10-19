@@ -83,6 +83,16 @@ def lookup(indices, values, dtype=None):
     return pa.array(taken, type=dtype, mask=mask)
 
 
+def sorted_index(keys, sorted_keys):
+    """For each of `keys`, its position in `sorted_keys` (ascending, unique), or -1 when it is not there."""
+    sorted_keys = np.asarray(sorted_keys)
+    if not len(sorted_keys):
+        return np.full(len(keys), -1)
+    pos = np.searchsorted(sorted_keys, keys)
+    pos = np.minimum(pos, len(sorted_keys) - 1)
+    return np.where(sorted_keys[pos] == keys, pos, -1)
+
+
 # ====================================================================================================
 # Building: which footprint a UPRN is inside, and how many UPRNs share it
 # ====================================================================================================

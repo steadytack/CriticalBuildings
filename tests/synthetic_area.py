@@ -318,3 +318,48 @@ def build_property_bronze(work):
     _snapshot("iod2025", _iod, work)
     _snapshot("planning_data", _planning, work)
     _snapshot("ea_flood_zones", _flood, work)
+
+# ---- energy performance certificates, as the register's bulk download looks: a zip of certificates (and a recommendations file that must be
+# ignored) plus a loose file in the older lower-case, hyphenated spelling. The address and postcode fields are present, as they are in the real files.
+EPC_HEADER = ["CERTIFICATE_NUMBER", "ADDRESS1", "POSTCODE", "CURRENT_ENERGY_RATING", "POTENTIAL_ENERGY_RATING", "CURRENT_ENERGY_EFFICIENCY",
+              "POTENTIAL_ENERGY_EFFICIENCY", "PROPERTY_TYPE", "BUILT_FORM", "LODGEMENT_DATE", "TOTAL_FLOOR_AREA", "CONSTRUCTION_AGE_BAND",
+              "TENURE", "MAIN_FUEL", "MAINS_GAS_FLAG", "NUMBER_HABITABLE_ROOMS", "WALLS_DESCRIPTION", "ROOF_DESCRIPTION", "MAINHEAT_DESCRIPTION",
+              "CO2_EMISSIONS_CURRENT", "UPRN"]
+EPC_ROWS = [
+    # UPRN 1 has two certificates: the later one (2023) is the one that counts
+    ["C-001-OLD", "1 Fire Lane", "TL1 9ZZ", "E", "C", "45", "70", "House", "Detached", "2015-03-02", "120.5", "England and Wales: 1950-1966",
+     "owner-occupied", "mains gas (not community)", "Y", "5", "Solid brick, as built, no insulation (assumed)", "Pitched, 100 mm loft insulation",
+     "Boiler and radiators, mains gas", "6.1", "100000000001"],
+    ["C-001-NEW", "1 Fire Lane", "TL1 9ZZ", "C", "B", "71", "82", "House", "Detached", "2023-07-19", "120.5", "England and Wales: 1950-1966",
+     "owner-occupied", "mains gas (not community)", "Y", "5", "Solid brick, as built, insulated (assumed)", "Pitched, 270 mm loft insulation",
+     "Boiler and radiators, mains gas", "3.2", "100000000001"],
+    ["C-021", "Elm Cottage", "TL1 1AA", "G", "D", "12", "55", "Bungalow", "Semi-Detached", "2019-11-05", "85.5", "England and Wales: before 1900",
+     "rental (private)", "oil (not community)", "N", "4", "Cob, as built", "Thatched", "Boiler and radiators, oil", "11.4", "100000000021"],
+    ["C-NOUPRN", "2 Nowhere Road", "TL1 1AA", "B", "A", "85", "90", "Flat", "Mid-Terrace", "2024-01-01", "50", "England and Wales: 2012 onwards",
+     "", "", "", "2", "", "", "", "1.0", ""],                                           # no UPRN: cannot be linked, must be dropped
+    ["C-UNKNOWN", "3 Far Away", "ZZ9 9ZZ", "D", "C", "60", "75", "House", "Terraced", "2020-02-02", "70", "England and Wales: 1983-1990",
+     "", "", "", "3", "", "", "", "4.0", "100000000777"],                               # a UPRN that is not in the area: no row in the table
+]
+EPC_LOOSE_HEADER = ["certificate-number", "address1", "postcode", "current-energy-rating", "total-floor-area", "lodgement-datetime", "uprn"]
+EPC_LOOSE_ROWS = [["C-011", "Oak School House", "TL1 1AA", "A", "300.25", "2025-05-05 10:11:12", "100000000011"]]
+
+
+def add_epc_to_inbox():
+    """Place the register's files in the (patched) EPC inbox, as you would after downloading them."""
+    import csv
+    import io
+    inbox = paths.DATA / "inbox" / "epc_domestic"
+    inbox.mkdir(parents=True)
+
+    def text(header, rows):
+        buf = io.StringIO()
+        w = csv.writer(buf, lineterminator="\n")
+        w.writerow(header)
+        w.writerows(rows)
+        return buf.getvalue()
+
+    with zipfile.ZipFile(inbox / "all-domestic-certificates.zip", "w") as z:
+        z.writestr("certificates.csv", text(EPC_HEADER, EPC_ROWS))
+        z.writestr("recommendations.csv", "LMK_KEY,IMPROVEMENT_ITEM\nC-001-NEW,1\n")
+    (inbox / "older-format.csv").write_text(text(EPC_LOOSE_HEADER, EPC_LOOSE_ROWS), encoding="utf-8")
+    return inbox

@@ -26,7 +26,8 @@ The interactive QA map is no longer stored with every run: draw it from the **Da
 
 **A second product: the UPRN property table.** `python -m critical_buildings properties --area suffolk` builds a table with one row for
 every addressable location (UPRN) in an area, linked to open data about it: the building footprint, nearest postcode, census area and
-deprivation scores, conservation area, Article 4 and listed-building status, flood zone, and the nearest critical site. Suffolk is about
+deprivation scores, conservation area, Article 4 and listed-building status, flood zone, the nearest critical site, and (if you add
+the register file) the energy certificate. Suffolk is about
 548,000 rows and builds in a minute; it is stored as parquet, not in the critical-buildings release files. See
 Each pipeline has its own web app, so it is clear which one you are looking at: `python -m critical_buildings ui` is
 critical-buildings (port 8501) and `python -m critical_buildings properties-ui` is this table (port 8502). The property app fetches the sources, builds the table, warns when it is out of date, and lets you filter,

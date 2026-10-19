@@ -364,7 +364,7 @@ def test_property_sources_do_not_change_the_critical_buildings_cache_key_lineage
 def test_the_property_sources_are_fetched_as_a_group_and_each_page_of_areas_is_asked_for(isolated_paths):
     rules = type("R", (), {"tags": []})()
     res = sources.fetch_all(rules, "suffolk", only=["properties"], dry_run=True)
-    assert list(res) == ["uprn", "codepoint", "lsoa", "iod", "planning", "flood"]
+    assert list(res) == ["uprn", "codepoint", "lsoa", "iod", "planning", "flood", "epc"]
     assert len(res["lsoa"]["files"]) == 18 and res["lsoa"]["files"][0] == "lsoa_000.geojson"             # 35,672 areas, 2,000 to a page
     assert res["planning"]["files"] == ["conservation-area.csv", "listed-building-outline.csv", "listed-building.csv", "article-4-direction-area.csv"]
     assert res["flood"]["files"] == ["flood-risk-zone.csv"] and res["iod"]["files"] == ["iod2025_file7.csv"]
