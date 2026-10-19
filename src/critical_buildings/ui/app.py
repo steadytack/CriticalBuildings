@@ -74,6 +74,8 @@ def tab_help():
 - **Reference data**: the editable business rules, role settings, register mapping and review decisions. Edits go to a **draft**;
   **Publish** (sidebar) freezes it as a numbered, immutable version. Runs always use a published version, so any past run can be reproduced.
 
+The UPRN property table is a separate pipeline with its own app: `python -m critical_buildings properties-ui`.
+
 Every save and publish rewrites a plain-text copy, `governed/control_dump.txt`, so a change shows up as an ordinary diff in git.
 """)
 

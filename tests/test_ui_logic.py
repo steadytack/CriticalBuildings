@@ -134,3 +134,19 @@ def test_the_web_ui_says_what_to_install_when_streamlit_is_missing(monkeypatch, 
     monkeypatch.setitem(sys.modules, "streamlit", None)                                         # makes `import streamlit` fail
     monkeypatch.setattr("subprocess.call", lambda cmd: (_ for _ in ()).throw(AssertionError("must not start without Streamlit")))
     assert cli.main(["ui"]) == 1 and "pip install -e .[ui]" in capsys.readouterr().out
+
+
+def test_each_pipeline_has_its_own_app_on_its_own_port_and_both_stay_local(monkeypatch, capsys):
+    import sys
+    import types
+
+    from critical_buildings import cli
+    started = []
+    monkeypatch.setattr("subprocess.call", lambda cmd: started.append(cmd) or 0)
+    monkeypatch.setitem(sys.modules, "streamlit", types.ModuleType("streamlit"))
+    assert cli.main(["ui", "--headless"]) == 0 and cli.main(["properties-ui", "--headless"]) == 0
+    critical, props = started[-2], started[-1]
+    assert critical[critical.index("run") + 1].endswith("app.py") and props[props.index("run") + 1].endswith("properties_app.py")
+    assert critical[critical.index("--server.port") + 1] == "8501" and props[props.index("--server.port") + 1] == "8502"
+    assert props[props.index("--server.address") + 1] == "127.0.0.1"
+    assert "the property table app on http://localhost:8502" in capsys.readouterr().out
